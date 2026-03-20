@@ -72,7 +72,7 @@ def create_app():
 
     @app.route("/")
     def index():
-        return redirect(url_for("notes.index"))
+        return redirect(url_for("weather.index"))
 
     @app.route("/camera-test")
     def camera_test():
