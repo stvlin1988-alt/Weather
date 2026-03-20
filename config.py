@@ -1,0 +1,43 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+class Config:
+    SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
+
+    # Database — defaults to SQLite for local dev, set DATABASE_URL for PostgreSQL
+    _db_url = os.getenv("DATABASE_URL", "sqlite:///./app.db")
+    # Zeabur PostgreSQL uses postgres:// scheme; SQLAlchemy needs postgresql://
+    if _db_url.startswith("postgres://"):
+        _db_url = _db_url.replace("postgres://", "postgresql://", 1)
+    SQLALCHEMY_DATABASE_URI = _db_url
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
+
+    # Cookie security (set True in production via env var)
+    SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+
+    # API keys
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+    OPENWEATHERMAP_API_KEY = os.getenv("OPENWEATHERMAP_API_KEY", "")
+
+    # Cloudflare R2 (S3-compatible)
+    R2_ENDPOINT_URL = os.getenv("R2_ENDPOINT_URL", "")
+    R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID", "")
+    R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY", "")
+    R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME", "face-photos")
+    R2_PUBLIC_URL = os.getenv("R2_PUBLIC_URL", "")  # e.g. https://pub-xxx.r2.dev
+
+    # Rate limiting storage
+    RATELIMIT_STORAGE_URL = os.getenv("RATELIMIT_STORAGE_URL", "memory://")
+
+    # CORS allowed origins (comma-separated)
+    ALLOWED_ORIGINS = [
+        o.strip()
+        for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5000").split(",")
+        if o.strip()
+    ]

@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% block title %}今天天氣{% endblock %}
+{% block extra_head %}
+<style>
+  .weather-wrap { display: flex; flex-direction: column; align-items: center; padding: 1rem 0; }
+  h1.weather-title { font-size: 2rem; font-weight: 700; margin-bottom: 0.25rem; cursor: default; user-select: none; }
+  #tap-target { cursor: pointer; transition: color .2s; }
+  #tap-target:hover { color: #3498db; }
+  .weather-subtitle { font-size: 1rem; opacity: .7; margin-bottom: 2rem; color: #555; }
+  .weather-card-inner { background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #74b9ff 100%);
+                         color: #fff; border-radius: 16px; padding: 2rem 2.5rem; text-align: center;
+                         min-width: 280px; box-shadow: 0 8px 32px rgba(0,0,0,.2); width: 100%; max-width: 360px; }
+  .city-name { font-size: 1.4rem; font-weight: 600; margin-bottom: .5rem; }
+  .temp { font-size: 4rem; font-weight: 700; margin: .5rem 0; }
+  .desc { font-size: 1.1rem; opacity: .9; text-transform: capitalize; margin-bottom: 1rem; }
+  .weather-icon { font-size: 4rem; margin: .5rem 0; }
+  .details { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem 1.5rem; text-align: left; font-size: .9rem; opacity: .85; }
+  .details span { display: flex; align-items: center; gap: .4rem; }
+  .loading { opacity: .6; font-size: 1.1rem; }
+  .weather-error { background: rgba(255,100,100,.3); padding: 1rem 1.5rem; border-radius: 8px; color: #fff; }
+
+  /* Auth Modal */
+  #auth-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
+                z-index: 1000; align-items: center; justify-content: center; }
+  #auth-modal.open { display: flex; }
+  .modal-box { background: #fff; color: #333; border-radius: 12px; padding: 2rem;
+               width: 380px; max-width: 95vw; position: relative; }
+  .modal-box h2 { margin-bottom: 1.25rem; color: #2c3e50; }
+  .modal-close { position: absolute; top: .75rem; right: 1rem; font-size: 1.5rem;
+                 background: none; border: none; cursor: pointer; color: #888; min-width: 44px; min-height: 44px; }
+  .modal-form-group { margin-bottom: .9rem; }
+  .modal-form-group label { display: block; margin-bottom: .3rem; font-size: .85rem; font-weight: 600; color: #555; }
+  .modal-form-group input { width: 100%; padding: .55rem .75rem; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; }
+  .modal-form-group input:focus { outline: none; border-color: #3498db; }
+  .btn-modal { display: block; width: 100%; padding: .75rem; border-radius: 6px; border: none; cursor: pointer;
+               font-size: .95rem; margin-top: .5rem; font-weight: 600; min-height: 44px; }
+  .btn-modal-primary { background: #3498db; color: #fff; }
+  .btn-modal-primary:hover { background: #2980b9; }
+  #modal-msg { text-align: center; font-size: .9rem; min-height: 1.3em; margin-top: .5rem; }
+  #modal-msg.ok { color: #27ae60; }
+  #modal-msg.err { color: #e74c3c; }
+
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+  #tap-indicator { position: fixed; bottom: 1.5rem; right: 1.5rem;
+                   background: rgba(0,0,0,.4); color: #fff; border-radius: 50%;
+                   width: 2rem; height: 2rem; display: none; align-items: center;
+                   justify-content: center; font-size: .8rem; font-weight: 700; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="weather-wrap">
+  <h1 class="weather-title">
+    <span>今</span><span id="tap-target" title="">天</span><span>天</span><span>氣</span><span>狀</span><span>況</span>
+  </h1>
+  <p class="weather-subtitle" id="location-text">正在取得位置…</p>
+  <div class="weather-card-inner" id="weather-card">
+    <div class="loading">🌐 載入天氣資料中…</div>
+  </div>
+</div>
+
+<div id="tap-indicator"></div>
+
+<!-- Hidden Auth Modal -->
+<div id="auth-modal">
+  <div class="modal-box">
+    <button class="modal-close" id="modal-close">×</button>
+    <h2>🔐 進入系統</h2>
+    <video id="m-video" autoplay playsinline muted style="display:none;"></video>
+    <canvas id="m-canvas" width="320" height="240" style="display:none;"></canvas>
+    <div class="modal-form-group">
+      <label style="display:flex;align-items:center;gap:.5rem;">
+        PIN 碼
+        <span id="m-cam-indicator" style="display:none;width:10px;height:10px;border-radius:50%;background:#e74c3c;animation:blink 1s infinite;"></span>
+      </label>
+      <input type="password" id="m-pin" maxlength="4" placeholder="4 位數" inputmode="numeric" autocomplete="current-password">
+    </div>
+    <button class="btn-modal btn-modal-primary" id="m-submit">驗證登入</button>
+    <div id="modal-msg"></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+// Tap detector — 「天」字點 6 次開啟 modal
+(function() {
+  const target = document.getElementById('tap-target');
+  const indicator = document.getElementById('tap-indicator');
+  const REQUIRED = 6;
+  let count = 0, timer;
+  function reset() { count = 0; indicator.style.display = 'none'; }
+  target?.addEventListener('click', () => {
+    count++;
+    clearTimeout(timer);
+    timer = setTimeout(reset, 3000);
+    if (count >= 2) {
+      indicator.textContent = count;
+      indicator.style.display = 'flex';
+    }
+    if (count >= REQUIRED) {
+      reset();
+      const modal = document.getElementById('auth-modal');
+      modal?.classList.add('open');
+      if (window.startModalCamera) window.startModalCamera();
+    }
+  });
+})();
+
+// Weather loading
+(function() {
+  const card = document.getElementById('weather-card');
+  const locText = document.getElementById('location-text');
+
+  const weatherIcons = {
+    Thunderstorm: '⛈️', Drizzle: '🌦️', Rain: '🌧️', Snow: '❄️',
+    Clear: '☀️', Clouds: '☁️', Mist: '🌫️', Fog: '🌫️',
+    Haze: '🌁', Dust: '💨', Sand: '💨', Ash: '🌋', Tornado: '🌪️',
+  };
+
+  function loadWeather(city) {
+    fetch(`/weather/api/weather?city=${encodeURIComponent(city)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) {
+          card.innerHTML = `<div class="weather-error">${data.error}</div>`;
+          return;
+        }
+        const icon = weatherIcons[data.weather?.[0]?.main] || '🌐';
+        const humidity = data.main?.humidity ?? '--';
+        const wind = data.wind?.speed ?? '--';
+        const feels = data.main?.feels_like != null ? Math.round(data.main.feels_like) : '--';
+        const visibility = data.visibility != null ? (data.visibility / 1000).toFixed(1) : '--';
+        card.innerHTML = `
+          <div class="city-name">📍 ${data.name}</div>
+          <div class="weather-icon">${icon}</div>
+          <div class="temp">${Math.round(data.main?.temp ?? 0)}°C</div>
+          <div class="desc">${data.weather?.[0]?.description || ''}</div>
+          <div class="details">
+            <span>💧 濕度 ${humidity}%</span>
+            <span>💨 風速 ${wind} m/s</span>
+            <span>🌡️ 體感 ${feels}°C</span>
+            <span>👁️ 能見度 ${visibility} km</span>
+          </div>`;
+      })
+      .catch(() => {
+        card.innerHTML = '<div class="weather-error">無法載入天氣資料</div>';
+      });
+  }
+
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        fetch(`/weather/api/weather?city=Taipei`)  // fallback for now
+          .then(() => {});
+        // Use reverse geocoding or just default to Taipei
+        locText.textContent = '台灣';
+        loadWeather('Taipei');
+      },
+      () => { locText.textContent = '台北市'; loadWeather('Taipei'); }
+    );
+  } else {
+    locText.textContent = '台北市';
+    loadWeather('Taipei');
+  }
+})();
+
+// Modal auth
+(function() {
+  const modal = document.getElementById('auth-modal');
+  const closeBtn = document.getElementById('modal-close');
+  const submitBtn = document.getElementById('m-submit');
+  const msgEl = document.getElementById('modal-msg');
+
+  function showMsg(text, cls) { msgEl.textContent = text; msgEl.className = cls || ''; }
+
+  closeBtn?.addEventListener('click', () => {
+    modal?.classList.remove('open');
+    showMsg('');
+    if (window.stopModalCamera) window.stopModalCamera();
+  });
+  modal?.addEventListener('click', e => {
+    if (e.target === modal) {
+      modal.classList.remove('open');
+      showMsg('');
+      if (window.stopModalCamera) window.stopModalCamera();
+    }
+  });
+
+  submitBtn?.addEventListener('click', async () => {
+    const pin = document.getElementById('m-pin')?.value.trim() || '';
+    const faceImage = window.captureModalFace ? window.captureModalFace() : null;
+    submitBtn.disabled = true;
+    showMsg('辨識中…');
+    try {
+      const res = await fetch('/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin, face_image: faceImage }),
+      });
+      const data = await res.json();
+      switch (data.status) {
+        case 'ok':
+          showMsg('驗證成功！正在跳轉…', 'ok');
+          setTimeout(() => { location.href = '/auth/s/r'; }, 800);
+          break;
+        case 'wrong_password':
+          showMsg('密碼錯了喔', 'err');
+          break;
+        case 'face_mismatch':
+          showMsg('密碼錯了喔', 'err');
+          break;
+        default:
+          showMsg('驗證失敗，請重試', 'err');
+      }
+    } catch (err) {
+      showMsg('連線錯誤，請重試', 'err');
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && modal?.classList.contains('open')) submitBtn?.click();
+  });
+})();
+</script>
+<script src="{{ url_for('static', filename='js/face_capture.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}鏡頭測試{% endblock %}
+{% block content %}
+<div class="card" style="max-width:500px;margin:2rem auto;">
+  <h2 style="margin-bottom:1rem;">鏡頭測試</h2>
+  <video id="video" autoplay playsinline muted style="width:100%;border-radius:6px;background:#000;"></video>
+  <canvas id="canvas" style="display:none;"></canvas>
+  <div style="display:flex;gap:.5rem;margin-top:.75rem;flex-wrap:wrap;">
+    <button class="btn btn-secondary" id="btn-start" style="flex:1;">開啟鏡頭</button>
+    <button class="btn btn-primary" id="btn-capture" disabled style="flex:1;">拍照</button>
+  </div>
+  <div id="preview" style="margin-top:1rem;"></div>
+  <div id="msg" style="color:#e74c3c;margin-top:.5rem;"></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/camera.js') }}"></script>
+<script>
+const cam = new Camera('video', 'canvas');
+document.getElementById('btn-start').onclick = () =>
+  cam.start()
+    .then(() => { document.getElementById('btn-capture').disabled = false; })
+    .catch(err => { document.getElementById('msg').textContent = err.message || '無法開啟鏡頭'; });
+document.getElementById('btn-capture').onclick = () => {
+  const img = document.createElement('img');
+  img.src = cam.capture();
+  img.style.cssText = 'width:100%;border-radius:6px;margin-top:.5rem;';
+  document.getElementById('preview').innerHTML = '';
+  document.getElementById('preview').appendChild(img);
+};
+</script>
+{% endblock %}

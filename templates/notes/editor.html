@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}{% if note %}編輯筆記{% else %}新增筆記{% endif %} — NOTE{% endblock %}
+{% block extra_head %}
+<style>
+.editor-wrap { display: grid; grid-template-rows: auto 1fr; gap: 1rem; }
+.editor-toolbar { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+#title-input { font-size: 1.3rem; font-weight: 700; border: none; border-bottom: 2px solid #eee; border-radius: 0; padding: 0.4rem 0; margin-bottom: .5rem; }
+#title-input:focus { border-color: #3498db; }
+#content-area { min-height: 300px; resize: vertical; font-size: 16px; line-height: 1.6; }
+.voice-btn { position: fixed; bottom: 2rem; right: 2rem; width: 72px; height: 72px;
+  background: #e74c3c; color: #fff; border: none; border-radius: 12px;
+  cursor: pointer; font-size: 1.8rem; display: flex; align-items: center;
+  justify-content: center; box-shadow: 0 4px 16px rgba(0,0,0,.25);
+  user-select: none; z-index: 999; touch-action: none; }
+.voice-btn.recording { animation: pulse 1s infinite; background: #c0392b; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+.ai-panel { margin-top: 1.5rem; border-top: 1px solid #eee; padding-top: 1rem; }
+.ai-result { background: #f8f9fa; border-radius: 6px; padding: 1rem; margin-top: .5rem; font-size: .9rem; white-space: pre-wrap; }
+.save-status { font-size: .8rem; color: #aaa; margin-left: auto; }
+.store-selector { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; margin-bottom: .75rem; }
+.store-selector label { font-size: .85rem; color: #666; margin-right: .25rem; }
+.store-btn { padding: .35rem .7rem; border-radius: 16px; font-size: .82rem; font-weight: 600; cursor: pointer; border: 2px solid #ddd; background: #f5f5f5; color: #555; transition: all .15s; min-height: 36px; }
+.store-btn:hover { border-color: #aaa; }
+.store-btn.selected { color: #fff; border-color: transparent; }
+.store-btn.selected[data-store="B"] { background: #3498db; } .store-btn.selected[data-store="C"] { background: #27ae60; }
+.store-btn.selected[data-store="D"] { background: #e67e22; } .store-btn.selected[data-store="E"] { background: #e74c3c; }
+.store-btn.selected[data-store="F"] { background: #9b59b6; } .store-btn.selected[data-store="G"] { background: #1abc9c; }
+.store-btn.selected[data-store="Q"] { background: #c0392b; }
+</style>
+{% endblock %}
+{% block content %}
+<div style="margin-bottom:1rem;display:flex;align-items:center;gap:.5rem;">
+  <a href="{{ url_for('notes.index') }}" class="btn btn-secondary">← 返回</a>
+  <span class="save-status" id="save-status"></span>
+</div>
+<div class="card editor-wrap">
+  <input type="text" id="title-input" placeholder="筆記標題…" value="{{ note.title if note else '' }}">
+  <div class="store-selector">
+    <label>店別：</label>
+    {% for s in ['B','C','D','E','F','G','Q'] %}
+    <button class="store-btn {% if note and note.store == s %}selected{% endif %}" data-store="{{ s }}" type="button">{{ s }}</button>
+    {% endfor %}
+  </div>
+  <div class="editor-toolbar">
+    {% if note %}
+    <button class="btn btn-danger" id="btn-delete" style="margin-left:auto;">刪除</button>
+    {% endif %}
+  </div>
+  <textarea id="content-area" placeholder="開始輸入筆記內容…">{{ note.content if note else '' }}</textarea>
+
+  {% if note and current_user.is_admin() %}
+  <div class="ai-panel">
+    <strong>AI 工具（管理者）</strong>
+    <div style="display:flex;gap:.5rem;margin-top:.5rem;flex-wrap:wrap;">
+      <button class="btn btn-secondary" id="btn-summarize">生成摘要</button>
+      <button class="btn btn-secondary" id="btn-outline">生成大綱</button>
+    </div>
+    <div id="ai-result" class="ai-result" style="display:none;"></div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/voice_input.js') }}"></script>
+<script>
+const NOTE_ID = {{ note.id if note else 'null' }};
+const titleEl = document.getElementById('title-input');
+const contentEl = document.getElementById('content-area');
+const statusEl = document.getElementById('save-status');
+let autoSaveTimer;
+let currentStore = {{ '"' + note.store + '"' if note and note.store else 'null' }};
+
+document.querySelectorAll('.store-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const s = btn.dataset.store;
+    if (currentStore === s) {
+      currentStore = null;
+      btn.classList.remove('selected');
+    } else {
+      document.querySelectorAll('.store-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      currentStore = s;
+    }
+    scheduleAutoSave();
+  });
+});
+
+function scheduleAutoSave() {
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(saveNote, 2000);
+}
+titleEl.addEventListener('input', scheduleAutoSave);
+contentEl.addEventListener('input', scheduleAutoSave);
+
+async function saveNote() {
+  const title = titleEl.value.trim() || '未命名筆記';
+  const content = contentEl.value;
+  const store = currentStore || null;
+  statusEl.textContent = '儲存中…';
+  if (NOTE_ID) {
+    await fetch(`/notes/api/${NOTE_ID}`, {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ title, content, store })
+    });
+    statusEl.textContent = '已儲存';
+  } else {
+    const res = await fetch('/notes/api', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ title, content, store })
+    });
+    const data = await res.json();
+    if (data.id) {
+      history.replaceState(null, '', `/notes/${data.id}`);
+      window.NOTE_ID = data.id;
+      statusEl.textContent = '已儲存';
+    }
+  }
+}
+
+document.getElementById('btn-delete')?.addEventListener('click', async () => {
+  if (!NOTE_ID || !confirm('確定要刪除這篇筆記？')) return;
+  await fetch(`/notes/api/${NOTE_ID}`, { method: 'DELETE' });
+  location.href = '/notes/';
+});
+
+const voice = new VoiceInput(contentEl);
+const voiceBtn = document.createElement('button');
+voiceBtn.className = 'voice-btn';
+voiceBtn.title = '長按語音輸入';
+voiceBtn.textContent = '🎤';
+document.body.appendChild(voiceBtn);
+
+function startVoice() { if (voice.isRecording) return; voice.start(); voiceBtn.classList.add('recording'); }
+function stopVoice() { if (!voice.isRecording) return; voice.stop(); voiceBtn.classList.remove('recording'); }
+
+voiceBtn.addEventListener('mousedown', e => { e.preventDefault(); startVoice(); });
+voiceBtn.addEventListener('mouseup', stopVoice);
+voiceBtn.addEventListener('mouseleave', stopVoice);
+voiceBtn.addEventListener('touchstart', e => { e.preventDefault(); startVoice(); });
+voiceBtn.addEventListener('touchend', stopVoice);
+voiceBtn.addEventListener('touchcancel', stopVoice);
+
+document.getElementById('btn-summarize')?.addEventListener('click', async () => {
+  const res = await fetch(`/notes/api/${NOTE_ID}/summarize`, { method: 'POST' });
+  const data = await res.json();
+  const el = document.getElementById('ai-result');
+  el.style.display = 'block';
+  el.textContent = data.summary || data.message || '錯誤';
+});
+document.getElementById('btn-outline')?.addEventListener('click', async () => {
+  const res = await fetch(`/notes/api/${NOTE_ID}/outline`, { method: 'POST' });
+  const data = await res.json();
+  const el = document.getElementById('ai-result');
+  el.style.display = 'block';
+  el.textContent = data.outline || data.message || '錯誤';
+});
+</script>
+{% endblock %}
