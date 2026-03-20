@@ -1,56 +1,78 @@
-{% extends "base.html" %}
-{% block title %}今天天氣{% endblock %}
-{% block extra_head %}
-<style>
-  .weather-wrap { display: flex; flex-direction: column; align-items: center; padding: 1rem 0; }
-  h1.weather-title { font-size: 2rem; font-weight: 700; margin-bottom: 0.25rem; cursor: default; user-select: none; }
-  #tap-target { cursor: pointer; transition: color .2s; }
-  #tap-target:hover { color: #3498db; }
-  .weather-subtitle { font-size: 1rem; opacity: .7; margin-bottom: 2rem; color: #555; }
-  .weather-card-inner { background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #74b9ff 100%);
-                         color: #fff; border-radius: 16px; padding: 2rem 2.5rem; text-align: center;
-                         min-width: 280px; box-shadow: 0 8px 32px rgba(0,0,0,.2); width: 100%; max-width: 360px; }
-  .city-name { font-size: 1.4rem; font-weight: 600; margin-bottom: .5rem; }
-  .temp { font-size: 4rem; font-weight: 700; margin: .5rem 0; }
-  .desc { font-size: 1.1rem; opacity: .9; text-transform: capitalize; margin-bottom: 1rem; }
-  .weather-icon { font-size: 4rem; margin: .5rem 0; }
-  .details { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem 1.5rem; text-align: left; font-size: .9rem; opacity: .85; }
-  .details span { display: flex; align-items: center; gap: .4rem; }
-  .loading { opacity: .6; font-size: 1.1rem; }
-  .weather-error { background: rgba(255,100,100,.3); padding: 1rem 1.5rem; border-radius: 8px; color: #fff; }
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="天氣">
+  <meta name="theme-color" content="#1e3c72">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+  <title>今天天氣</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', 'PingFang TC', sans-serif;
+           background: linear-gradient(160deg, #0f2027, #203a43, #2c5364);
+           min-height: 100vh; color: #fff; display: flex; flex-direction: column; align-items: center; }
 
-  /* Auth Modal */
-  #auth-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
-                z-index: 1000; align-items: center; justify-content: center; }
-  #auth-modal.open { display: flex; }
-  .modal-box { background: #fff; color: #333; border-radius: 12px; padding: 2rem;
-               width: 380px; max-width: 95vw; position: relative; }
-  .modal-box h2 { margin-bottom: 1.25rem; color: #2c3e50; }
-  .modal-close { position: absolute; top: .75rem; right: 1rem; font-size: 1.5rem;
-                 background: none; border: none; cursor: pointer; color: #888; min-width: 44px; min-height: 44px; }
-  .modal-form-group { margin-bottom: .9rem; }
-  .modal-form-group label { display: block; margin-bottom: .3rem; font-size: .85rem; font-weight: 600; color: #555; }
-  .modal-form-group input { width: 100%; padding: .55rem .75rem; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; }
-  .modal-form-group input:focus { outline: none; border-color: #3498db; }
-  .btn-modal { display: block; width: 100%; padding: .75rem; border-radius: 6px; border: none; cursor: pointer;
-               font-size: .95rem; margin-top: .5rem; font-weight: 600; min-height: 44px; }
-  .btn-modal-primary { background: #3498db; color: #fff; }
-  .btn-modal-primary:hover { background: #2980b9; }
-  #modal-msg { text-align: center; font-size: .9rem; min-height: 1.3em; margin-top: .5rem; }
-  #modal-msg.ok { color: #27ae60; }
-  #modal-msg.err { color: #e74c3c; }
+    .weather-wrap { display: flex; flex-direction: column; align-items: center;
+                    padding: 3rem 1rem 2rem; width: 100%; max-width: 420px; }
+    h1.weather-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.25rem;
+                       cursor: default; user-select: none; opacity: .85; letter-spacing: .1em; }
+    #tap-target { cursor: pointer; }
+    .weather-subtitle { font-size: .95rem; opacity: .6; margin-bottom: 2rem; }
 
-  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
-  #tap-indicator { position: fixed; bottom: 1.5rem; right: 1.5rem;
-                   background: rgba(0,0,0,.4); color: #fff; border-radius: 50%;
-                   width: 2rem; height: 2rem; display: none; align-items: center;
-                   justify-content: center; font-size: .8rem; font-weight: 700; }
-</style>
-{% endblock %}
-{% block content %}
+    .weather-card-inner { background: rgba(255,255,255,.12); backdrop-filter: blur(12px);
+                           border: 1px solid rgba(255,255,255,.2);
+                           border-radius: 20px; padding: 2rem 2.5rem; text-align: center;
+                           width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,.3); }
+    .city-name { font-size: 1.3rem; font-weight: 600; margin-bottom: .4rem; opacity: .9; }
+    .temp { font-size: 5rem; font-weight: 700; margin: .25rem 0; line-height: 1; }
+    .desc { font-size: 1.1rem; opacity: .8; text-transform: capitalize; margin-bottom: 1.25rem; }
+    .weather-icon { font-size: 3.5rem; margin: .5rem 0; }
+    .details { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem 1rem;
+               text-align: left; font-size: .9rem; opacity: .8; margin-top: .5rem; }
+    .details span { display: flex; align-items: center; gap: .35rem; }
+    .loading { opacity: .6; font-size: 1.1rem; padding: 2rem 0; }
+    .weather-error { background: rgba(255,100,100,.2); padding: 1rem 1.5rem; border-radius: 8px; }
+
+    /* Auth Modal */
+    #auth-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
+                  z-index: 1000; align-items: center; justify-content: center; }
+    #auth-modal.open { display: flex; }
+    .modal-box { background: #fff; color: #333; border-radius: 16px; padding: 2rem;
+                 width: 360px; max-width: 95vw; position: relative; }
+    .modal-box h2 { margin-bottom: 1.25rem; color: #2c3e50; }
+    .modal-close { position: absolute; top: .75rem; right: 1rem; font-size: 1.5rem;
+                   background: none; border: none; cursor: pointer; color: #888;
+                   min-width: 44px; min-height: 44px; }
+    .modal-form-group { margin-bottom: .9rem; }
+    .modal-form-group label { display: block; margin-bottom: .3rem; font-size: .85rem;
+                               font-weight: 600; color: #555; }
+    .modal-form-group input { width: 100%; padding: .55rem .75rem; border: 1px solid #ddd;
+                               border-radius: 6px; font-size: 16px; }
+    .modal-form-group input:focus { outline: none; border-color: #3498db; }
+    .btn-modal { display: block; width: 100%; padding: .75rem; border-radius: 8px; border: none;
+                 cursor: pointer; font-size: .95rem; margin-top: .5rem; font-weight: 600; min-height: 44px; }
+    .btn-modal-primary { background: #3498db; color: #fff; }
+    .btn-modal-primary:hover { background: #2980b9; }
+    #modal-msg { text-align: center; font-size: .9rem; min-height: 1.3em; margin-top: .5rem; }
+    #modal-msg.ok { color: #27ae60; }
+    #modal-msg.err { color: #e74c3c; }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+    #tap-indicator { position: fixed; bottom: 1.5rem; right: 1.5rem;
+                     background: rgba(255,255,255,.2); color: #fff; border-radius: 50%;
+                     width: 2rem; height: 2rem; display: none; align-items: center;
+                     justify-content: center; font-size: .8rem; font-weight: 700; }
+  </style>
+</head>
+<body>
 <div class="weather-wrap">
   <h1 class="weather-title">
-    <span>今</span><span id="tap-target" title="">天</span><span>天</span><span>氣</span><span>狀</span><span>況</span>
+    <span>今</span><span id="tap-target">天</span><span>天氣</span>
   </h1>
   <p class="weather-subtitle" id="location-text">正在取得位置…</p>
   <div class="weather-card-inner" id="weather-card">
@@ -78,8 +100,8 @@
     <div id="modal-msg"></div>
   </div>
 </div>
-{% endblock %}
-{% block scripts %}
+
+<script>
 <script>
 // Tap detector — 「天」字點 6 次開啟 modal
 (function() {
@@ -224,4 +246,10 @@
 })();
 </script>
 <script src="{{ url_for('static', filename='js/face_capture.js') }}"></script>
-{% endblock %}
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
+</script>
+</body>
+</html>
