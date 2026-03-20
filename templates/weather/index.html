@@ -139,9 +139,12 @@
   };
 
   function loadWeather(city) {
-    fetch(`/weather/api/weather?city=${encodeURIComponent(city)}`)
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    fetch(`/weather/api/weather?city=${encodeURIComponent(city)}`, { signal: controller.signal })
       .then(r => r.json())
       .then(data => {
+        clearTimeout(timeout);
         if (data.error) {
           card.innerHTML = `<div class="weather-error">${data.error}</div>`;
           return;
@@ -163,8 +166,10 @@
             <span>👁️ 能見度 ${visibility} km</span>
           </div>`;
       })
-      .catch(() => {
-        card.innerHTML = '<div class="weather-error">無法載入天氣資料</div>';
+      .catch(err => {
+        clearTimeout(timeout);
+        const msg = err.name === 'AbortError' ? '載入逾時，請重新整理' : '無法載入天氣資料';
+        card.innerHTML = `<div class="weather-error">${msg}</div>`;
       });
   }
 
