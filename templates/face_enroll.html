@@ -3,7 +3,11 @@
 {% block content %}
 <div class="card" style="max-width:480px;margin:2rem auto;">
   <h2 style="margin-bottom:1.5rem;">登錄 / 更新人臉</h2>
-  {% if current_user.face_photo_url %}
+  {% if request.args.get('first') %}
+  <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.95rem;">
+    ⚠️ 首次登入：請先建立人臉才能使用系統
+  </div>
+  {% elif current_user.face_photo_url %}
   <p style="margin-bottom:1rem;font-size:.9rem;color:#27ae60;">✅ 已有人臉資料（可重新登錄覆蓋）</p>
   {% endif %}
   <video id="video" autoplay playsinline style="width:100%;max-width:320px;border-radius:6px;background:#000;display:block;margin-bottom:.5rem;"></video>
@@ -43,6 +47,8 @@ document.getElementById('btn-capture').onclick = () => {
   document.getElementById('btn-enroll').disabled = false;
 };
 
+const isFirst = new URLSearchParams(location.search).get('first');
+
 document.getElementById('btn-enroll').onclick = async () => {
   const msg = document.getElementById('msg');
   const res = await fetch('/face/enroll', {
@@ -52,7 +58,10 @@ document.getElementById('btn-enroll').onclick = async () => {
   const data = await res.json();
   if (data.status === 'ok') {
     msg.style.color = '#27ae60';
-    msg.textContent = '人臉登錄成功！';
+    msg.textContent = isFirst ? '人臉登錄成功！即將進入系統⋯' : '人臉登錄成功！';
+    if (isFirst) {
+      setTimeout(() => { location.href = '/notes/'; }, 1500);
+    }
   } else {
     msg.textContent = data.message || '失敗，請重試';
   }

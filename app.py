@@ -39,6 +39,12 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        # Bootstrap: create default admin if no admin exists
+        if not User.query.filter_by(role="admin").first():
+            default_admin = User(username="admin", role="admin")
+            default_admin.set_password("9210")
+            db.session.add(default_admin)
+            db.session.commit()
 
     # Flask 2.x: g is app-context-scoped, not request-scoped.
     # In production each request gets a fresh app context so this is a no-op.
@@ -72,6 +78,8 @@ def create_app():
 
     @app.route("/")
     def index():
+        if os.getenv("APP_MODE") == "notes":
+            return redirect(url_for("auth.login"))
         return redirect(url_for("weather.index"))
 
     @app.route("/camera-test")

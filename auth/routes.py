@@ -11,7 +11,7 @@ Two login flows:
 import io
 import base64
 from datetime import datetime
-from flask import Blueprint, request, jsonify, session, redirect, url_for, render_template, flash, current_app
+from flask import Blueprint, request, jsonify, session, redirect, url_for, render_template, flash, current_app, abort
 from flask_login import login_user, logout_user, login_required, current_user
 from extensions import db, limiter
 from models import User
@@ -26,7 +26,10 @@ auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
 
 @auth_bp.route("/register", methods=["GET", "POST"])
+@login_required
 def register():
+    if not current_user.is_admin():
+        abort(403)
     if request.method == "GET":
         return render_template("auth/register.html")
 
@@ -62,7 +65,17 @@ def login():
     if not user or not user.check_password(pin):
         return jsonify({"status": "wrong_password"}), 401
 
-    if user.face_encoding and image_b64 and FACE_RECOGNITION_AVAILABLE:
+    # First-time login: no face enrolled yet → log in and send to face setup
+    if not user.face_encoding:
+        login_user(user)
+        return jsonify({"status": "need_face_enroll",
+                        "redirect": url_for("face.settings", first="1")})
+
+    # Face enrolled → face image is required
+    if not image_b64:
+        return jsonify({"status": "face_required"})
+
+    if FACE_RECOGNITION_AVAILABLE:
         match, _ = _verify_face(user, image_b64)
         if not match:
             return jsonify({"status": "face_mismatch"}), 401

@@ -11,53 +11,80 @@
     <label>4 位數 PIN</label>
     <input type="password" id="pin" maxlength="4" inputmode="numeric" autocomplete="current-password">
   </div>
-  <div class="form-group">
-    <label>人臉驗證（選填，若已登錄則必填）</label>
+  <div class="form-group" id="face-section" style="display:none;">
+    <label>人臉驗證</label>
     <video id="video" autoplay playsinline muted style="width:100%;max-width:320px;border-radius:6px;background:#000;display:block;margin-bottom:.5rem;"></video>
     <canvas id="canvas" style="display:none;"></canvas>
-    <button class="btn btn-secondary" id="btn-start-cam" style="width:100%;max-width:320px;">開啟鏡頭</button>
   </div>
   <div id="msg" style="margin-bottom:.75rem;color:#e74c3c;min-height:1.4em;font-size:.95rem;"></div>
   <button class="btn btn-primary" id="btn-login" style="width:100%;">登入</button>
-  <p style="margin-top:1rem;text-align:center;font-size:.9rem;">沒有帳號？<a href="{{ url_for('auth.register') }}">註冊</a></p>
 </div>
 {% endblock %}
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/camera.js') }}"></script>
 <script>
 const cam = new Camera('video', 'canvas');
+let faceRequired = false;
 
-document.getElementById('btn-start-cam').onclick = () => {
-  cam.start()
-    .then(() => { document.getElementById('btn-start-cam').disabled = true; })
-    .catch(err => { document.getElementById('msg').textContent = err.message || '無法開啟鏡頭'; });
-};
+async function startCamera() {
+  document.getElementById('face-section').style.display = 'block';
+  try {
+    await cam.start();
+  } catch (err) {
+    document.getElementById('msg').textContent = err.message || '無法開啟鏡頭';
+  }
+}
 
-document.getElementById('btn-login').onclick = async () => {
+async function doLogin() {
   const username = document.getElementById('username').value.trim();
   const pin = document.getElementById('pin').value.trim();
   const msg = document.getElementById('msg');
+  msg.style.color = '#e74c3c';
   msg.textContent = '';
+
+  if (!username || !pin) {
+    msg.textContent = '請輸入帳號和 PIN';
+    return;
+  }
+
   const body = { username, pin };
   if (cam.isRecording) body.face_image = cam.capture();
+
   const res = await fetch('/auth/login', {
     method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
   });
   const data = await res.json();
+
   if (data.status === 'ok') {
     location.href = data.redirect || '/notes/';
+
+  } else if (data.status === 'need_face_enroll') {
+    // First login: no face yet → go to face enrollment
+    location.href = data.redirect;
+
+  } else if (data.status === 'face_required') {
+    // User has face enrolled but didn't provide one → auto-start camera
+    faceRequired = true;
+    msg.style.color = '#e67e22';
+    msg.textContent = '請開啟鏡頭進行人臉驗證';
+    await startCamera();
+
   } else if (data.status === 'wrong_password') {
     msg.textContent = '帳號或密碼錯誤';
+    faceRequired = false;
+
   } else if (data.status === 'face_mismatch') {
-    msg.textContent = '人臉驗證失敗';
+    msg.textContent = '人臉驗證失敗，請重試';
+
   } else {
     msg.textContent = '登入失敗，請重試';
   }
-};
+}
 
-// Allow Enter key
+document.getElementById('btn-login').onclick = doLogin;
+
 document.getElementById('pin').addEventListener('keydown', e => {
-  if (e.key === 'Enter') document.getElementById('btn-login').click();
+  if (e.key === 'Enter') doLogin();
 });
 </script>
 {% endblock %}

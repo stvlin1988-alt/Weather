@@ -13,10 +13,39 @@ th { background: #f8f9fa; font-weight: 700; }
 @media (max-width: 600px) {
   th:nth-child(5), td:nth-child(5) { display: none; }
 }
+#enroll-preview { display:none; flex-direction:column; align-items:center; gap:.5rem; margin-top:.5rem; }
+#enroll-video { width:100%; max-width:320px; border-radius:8px; background:#000; }
+#enroll-canvas { display:none; }
+#enroll-snapshot { width:100%; max-width:320px; border-radius:8px; border:2px solid #28a745; display:none; }
 </style>
 {% endblock %}
 {% block content %}
 <h2>管理後台</h2>
+<div class="card" style="margin-top:1rem;">
+  <h3>新增員工帳號</h3>
+  <div style="display:flex;flex-direction:column;gap:.75rem;max-width:400px;">
+    <div>
+      <label style="display:block;font-size:.9rem;margin-bottom:.25rem;">帳號</label>
+      <input id="new-username" type="text" class="form-control" placeholder="輸入帳號" style="font-size:1rem;">
+    </div>
+    <div>
+      <label style="display:block;font-size:.9rem;margin-bottom:.25rem;">PIN（4位數）</label>
+      <input id="new-pin" type="password" class="form-control" inputmode="numeric" maxlength="4" placeholder="輸入 PIN" style="font-size:1rem;">
+    </div>
+    <div>
+      <button class="btn btn-secondary" onclick="startEnrollCamera()" id="btn-open-camera">開啟鏡頭</button>
+      <span id="enroll-status" style="font-size:.85rem;margin-left:.5rem;color:#666;"></span>
+    </div>
+    <div id="enroll-preview">
+      <video id="enroll-video" autoplay playsinline muted></video>
+      <canvas id="enroll-canvas"></canvas>
+      <button class="btn btn-secondary" onclick="captureEnroll()">拍照</button>
+      <img id="enroll-snapshot" alt="已拍照預覽">
+    </div>
+    <button class="btn btn-primary" onclick="submitCreateUser()" style="max-width:160px;">建立帳號</button>
+    <div id="create-msg" style="font-size:.9rem;"></div>
+  </div>
+</div>
 <div class="card" style="margin-top:1rem;">
   <h3>使用者列表</h3>
   <table>
@@ -59,6 +88,7 @@ th { background: #f8f9fa; font-weight: 700; }
 </div>
 {% endblock %}
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/camera.js') }}"></script>
 <script>
 async function toggleUser(id) {
   const res = await fetch(`/admin/users/${id}/toggle`, { method: 'POST' });
@@ -74,6 +104,72 @@ async function setRole(id, role) {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({ role })
   });
+}
+
+let enrollCam = null;
+let capturedFaceImage = null;
+
+async function startEnrollCamera() {
+  document.getElementById('enroll-preview').style.display = 'flex';
+  document.getElementById('btn-open-camera').disabled = true;
+  const statusEl = document.getElementById('enroll-status');
+  statusEl.textContent = '啟動鏡頭中...';
+  enrollCam = new Camera('enroll-video', 'enroll-canvas');
+  try {
+    await enrollCam.start();
+    statusEl.textContent = '鏡頭已啟動，請對著員工拍照';
+  } catch (err) {
+    statusEl.textContent = '無法開啟鏡頭：' + err.message;
+    document.getElementById('btn-open-camera').disabled = false;
+  }
+}
+
+function captureEnroll() {
+  if (!enrollCam) return;
+  capturedFaceImage = enrollCam.capture();
+  const snap = document.getElementById('enroll-snapshot');
+  snap.src = capturedFaceImage;
+  snap.style.display = 'block';
+  document.getElementById('enroll-status').textContent = '已拍照，可繼續建立帳號';
+}
+
+async function submitCreateUser() {
+  const username = document.getElementById('new-username').value.trim();
+  const pin = document.getElementById('new-pin').value.trim();
+  const msgEl = document.getElementById('create-msg');
+
+  if (!username || !pin) {
+    msgEl.style.color = '#dc3545';
+    msgEl.textContent = '請填寫帳號和 PIN';
+    return;
+  }
+
+  msgEl.style.color = '#666';
+  msgEl.textContent = '建立中...';
+
+  const res = await fetch('/admin/users/create', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ username, pin, face_image: capturedFaceImage })
+  });
+  const data = await res.json();
+
+  if (data.status === 'ok') {
+    msgEl.style.color = '#28a745';
+    msgEl.textContent = `帳號「${data.username}」建立成功（ID: ${data.user_id}）`;
+    document.getElementById('new-username').value = '';
+    document.getElementById('new-pin').value = '';
+    document.getElementById('enroll-snapshot').style.display = 'none';
+    capturedFaceImage = null;
+    if (enrollCam) { enrollCam.stop(); enrollCam = null; }
+    document.getElementById('enroll-preview').style.display = 'none';
+    document.getElementById('btn-open-camera').disabled = false;
+    document.getElementById('enroll-status').textContent = '';
+    setTimeout(() => location.reload(), 1500);
+  } else {
+    msgEl.style.color = '#dc3545';
+    msgEl.textContent = data.message || '建立失敗';
+  }
 }
 </script>
 {% endblock %}

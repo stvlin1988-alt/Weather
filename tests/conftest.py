@@ -136,10 +136,24 @@ def admin_user(app, db_session):
 
 @pytest.fixture
 def logged_in_client(client, test_user):
-    """Client with test_user logged in."""
-    res = client.post('/auth/login', json={'username': test_user.username, 'pin': '1234'})
+    """Client with test_user logged in (has face encoding, must provide face_image)."""
+    fake_b64 = 'data:image/jpeg;base64,/9j/4AAQSkZJRg=='
+    res = client.post('/auth/login', json={
+        'username': test_user.username, 'pin': '1234', 'face_image': fake_b64
+    })
     assert res.status_code == 200, f"Login failed: {res.status_code} {res.get_data(as_text=True)}"
     assert res.get_json()['status'] == 'ok', f"Login not ok: {res.get_json()}"
+    return client
+
+
+@pytest.fixture
+def logged_in_admin_client(client, admin_user):
+    """Client with admin_user logged in (admin has no face → need_face_enroll status)."""
+    res = client.post('/auth/login', json={'username': admin_user.username, 'pin': '0000'})
+    assert res.status_code == 200, f"Admin login failed: {res.get_data(as_text=True)}"
+    data = res.get_json()
+    # Admin has no face encoding → server still logs them in and returns need_face_enroll
+    assert data['status'] in ('ok', 'need_face_enroll'), f"Unexpected: {data}"
     return client
 
 
