@@ -87,9 +87,6 @@
   <div class="modal-box">
     <button class="modal-close" id="modal-close">×</button>
     <h2>🔐 進入系統</h2>
-    <video id="m-video" autoplay playsinline muted
-           style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;"></video>
-    <canvas id="m-canvas" width="320" height="240" style="display:none;"></canvas>
     <div class="modal-form-group">
       <label style="display:flex;align-items:center;gap:.5rem;">
         PIN 碼
@@ -224,6 +221,9 @@
         case 'wrong_password':
           showMsg('PIN 碼錯誤，請重新輸入', 'err');
           break;
+        case 'face_not_found':
+          showMsg('未偵測到人臉，請正對鏡頭再試', 'err');
+          break;
         case 'face_mismatch':
           showMsg('人臉辨識失敗，請重試', 'err');
           break;
@@ -242,6 +242,10 @@
   });
 })();
 </script>
+<!-- video/canvas 放在 body 底層，position:fixed 確保永遠在 render pipeline，不受 modal display:none 影響 -->
+<video id="m-video" autoplay playsinline muted
+       style="position:fixed;top:-9999px;left:-9999px;width:320px;height:240px;pointer-events:none;"></video>
+<canvas id="m-canvas" width="320" height="240" style="display:none;"></canvas>
 <script src="{{ url_for('static', filename='js/face_capture.js') }}"></script>
 <script>
   if ('serviceWorker' in navigator) {

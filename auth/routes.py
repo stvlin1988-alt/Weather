@@ -10,7 +10,10 @@ Two login flows:
 """
 import io
 import base64
+import logging
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 from flask import Blueprint, request, jsonify, session, redirect, url_for, render_template, flash, current_app, abort
 from flask_login import login_user, logout_user, login_required, current_user
 from extensions import db, limiter
@@ -111,6 +114,16 @@ def verify():
             break
 
     if not matched_user:
+        # 區分「影像沒有人臉」vs「人臉找到但不符」
+        try:
+            img_data = base64.b64decode(face_image.split(",")[-1])
+            img = face_recognition.load_image_file(io.BytesIO(img_data))
+            any_face_found = len(face_recognition.face_encodings(img)) > 0
+        except Exception:
+            any_face_found = False
+        if not any_face_found:
+            logger.warning("verify: no face detected in submitted image")
+            return jsonify({"status": "face_not_found"})
         return jsonify({"status": "face_mismatch"})
 
     if not matched_user.check_password(pin):
@@ -142,12 +155,14 @@ def _verify_face(user: User, image_b64: str):
         img = face_recognition.load_image_file(io.BytesIO(img_data))
         encodings = face_recognition.face_encodings(img)
         if not encodings:
+            logger.warning("_verify_face: no face detected (img size=%d bytes)", len(img_data))
             return False, 0.0
         known = user.get_face_encoding()
         if known is None:
             return False, 0.0
         distances = face_recognition.face_distance([known], encodings[0])
-        match = bool(face_recognition.compare_faces([known], encodings[0], tolerance=0.45)[0])
+        logger.info("_verify_face: user=%s distance=%.3f", user.username, float(distances[0]))
+        match = bool(face_recognition.compare_faces([known], encodings[0], tolerance=0.55)[0])
         confidence = float(1 - distances[0])
         return match, confidence
     except Exception:
