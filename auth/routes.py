@@ -108,6 +108,7 @@ def verify():
     rows = User.query.filter_by(is_active=True).filter(
         User.face_encoding.isnot(None)
     ).all()
+    logger.warning("verify: rows_with_face=%d", len(rows))
 
     matched_user = None
     for user in rows:
