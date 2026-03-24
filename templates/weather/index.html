@@ -87,7 +87,8 @@
   <div class="modal-box">
     <button class="modal-close" id="modal-close">×</button>
     <h2>🔐 進入系統</h2>
-    <video id="m-video" autoplay playsinline muted style="display:none;"></video>
+    <video id="m-video" autoplay playsinline muted
+           style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;"></video>
     <canvas id="m-canvas" width="320" height="240" style="display:none;"></canvas>
     <div class="modal-form-group">
       <label style="display:flex;align-items:center;gap:.5rem;">
@@ -202,6 +203,10 @@
   submitBtn?.addEventListener('click', async () => {
     const pin = document.getElementById('m-pin')?.value.trim() || '';
     const faceImage = window.captureModalFace ? window.captureModalFace() : null;
+    if (!faceImage) {
+      showMsg('相機尚未就緒，請稍候再試', 'err');
+      return;
+    }
     submitBtn.disabled = true;
     showMsg('辨識中…');
     try {
