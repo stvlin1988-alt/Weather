@@ -98,6 +98,9 @@ def verify():
     data = request.get_json(silent=True) or {}
     pin = str(data.get("pin") or "").strip()
     face_image = data.get("face_image")
+    logger.warning("verify: called, face_image=%s, pin_len=%d",
+                   "yes" if face_image else "NO",
+                   len(pin))
 
     if not face_image:
         return jsonify({"status": "face_mismatch"})

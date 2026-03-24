@@ -2,6 +2,15 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
 
+import logging
+
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.WARNING,
+    format="%(asctime)s %(name)s %(levelname)s: %(message)s",
+    force=True,
+)
+
 from flask import Flask, redirect, url_for, render_template
 from config import Config
 from extensions import db, login_manager, limiter
