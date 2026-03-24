@@ -224,6 +224,10 @@
         case 'face_not_found':
           showMsg('未偵測到人臉，請正對鏡頭再試', 'err');
           break;
+        case 'need_face_enroll':
+          showMsg('驗證成功！請設定人臉辨識…', 'ok');
+          setTimeout(() => { location.href = '/face/settings'; }, 800);
+          break;
         case 'face_mismatch':
           showMsg('人臉辨識失敗，請重試', 'err');
           break;

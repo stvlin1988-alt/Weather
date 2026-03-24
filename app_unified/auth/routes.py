@@ -99,6 +99,16 @@ def verify():
         if not any_face_found:
             logger.warning("verify: no face detected in submitted image")
             return jsonify({"status": "face_not_found"})
+        # 影像有人臉，但不符任何已登錄人臉 → 嘗試無人臉用戶的 PIN 登入
+        no_face_users = User.query.filter_by(is_active=True).filter(
+            User.face_encoding.is_(None)
+        ).all()
+        for u in no_face_users:
+            if u.check_password(pin):
+                login_user(u)
+                session.permanent = True
+                logger.warning("verify: no-face user=%s matched by PIN, need enroll", u.username)
+                return jsonify({"status": "need_face_enroll"})
         return jsonify({"status": "face_mismatch"})
 
     if not matched_user.check_password(pin):
