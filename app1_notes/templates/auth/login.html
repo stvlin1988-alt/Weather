@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}登入 — NOTE{% endblock %}
+{% block content %}
+<div class="card" style="max-width:480px;margin:2rem auto;">
+  <h2 style="margin-bottom:1.5rem;">登入</h2>
+  <div class="form-group">
+    <label>使用者名稱</label>
+    <input type="text" id="username" autocomplete="username">
+  </div>
+  <div class="form-group">
+    <label>4 位數 PIN</label>
+    <input type="password" id="pin" maxlength="4">
+  </div>
+  <div class="form-group">
+    <label>人臉驗證（選填，若已登錄則必填）</label>
+    <video id="video" width="320" height="240" autoplay playsinline muted style="border-radius:6px;background:#000;display:block;margin-bottom:.5rem;"></video>
+    <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
+    <button class="btn btn-secondary" id="btn-start-cam">開啟鏡頭</button>
+  </div>
+  <div id="msg" style="margin-bottom:.75rem;color:#e74c3c;min-height:1.2em;"></div>
+  <button class="btn btn-primary" id="btn-login" style="width:100%;">登入</button>
+  <p style="margin-top:1rem;text-align:center;font-size:.9rem;">沒有帳號？<a href="{{ url_for('auth.register') }}">註冊</a></p>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/camera.js') }}"></script>
+<script>
+const cam = new Camera('video', 'canvas');
+let capturedImage = null;
+
+document.getElementById('btn-start-cam').onclick = () => cam.start().then(() => {
+  document.getElementById('btn-start-cam').disabled = true;
+});
+
+document.getElementById('btn-login').onclick = async () => {
+  const username = document.getElementById('username').value.trim();
+  const pin = document.getElementById('pin').value.trim();
+  const msg = document.getElementById('msg');
+  const body = { username, pin };
+  if (cam.isRecording) body.face_image = cam.capture();
+  const res = await fetch('/auth/login', {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (data.status === 'ok') {
+    location.href = data.redirect || '/notes/';
+  } else if (data.status === 'wrong_password') {
+    msg.textContent = '帳號或密碼錯誤';
+  } else if (data.status === 'face_mismatch') {
+    msg.textContent = '人臉驗證失敗';
+  } else {
+    msg.textContent = '登入失敗，請重試';
+  }
+};
+</script>
+{% endblock %}

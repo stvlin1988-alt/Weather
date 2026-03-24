@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WEATHER</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', 'PingFang TC', sans-serif; min-height: 100vh;
+           background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #74b9ff 100%);
+           color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+           padding: 2rem 1rem; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 0.25rem; letter-spacing: .05em; cursor: default; user-select: none; }
+    h1 span { display: inline-block; }
+    #tap-target { cursor: pointer; transition: color .2s; }
+    #tap-target:hover { color: #ffd32a; }
+    .subtitle { font-size: 1rem; opacity: .7; margin-bottom: 2rem; }
+    .weather-card { background: rgba(255,255,255,.15); backdrop-filter: blur(12px);
+                    border-radius: 16px; padding: 2rem 2.5rem; text-align: center;
+                    min-width: 280px; box-shadow: 0 8px 32px rgba(0,0,0,.2); }
+    .city-name { font-size: 1.4rem; font-weight: 600; margin-bottom: .5rem; }
+    .temp { font-size: 4rem; font-weight: 700; margin: .5rem 0; }
+    .desc { font-size: 1.1rem; opacity: .9; text-transform: capitalize; margin-bottom: 1rem; }
+    .weather-icon { font-size: 4rem; margin: .5rem 0; }
+    .details { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem 1.5rem; text-align: left; font-size: .9rem; opacity: .85; }
+    .details span { display: flex; align-items: center; gap: .4rem; }
+    .loading { opacity: .6; font-size: 1.1rem; }
+    .error { background: rgba(255,100,100,.3); padding: 1rem 1.5rem; border-radius: 8px; }
+
+    /* Hidden login modal */
+    #auth-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
+                  z-index: 1000; align-items: center; justify-content: center; }
+    #auth-modal.open { display: flex; }
+    .modal-box { background: #fff; color: #333; border-radius: 12px; padding: 2rem;
+                 width: 380px; max-width: 95vw; position: relative; }
+    .modal-box h2 { margin-bottom: 1.25rem; color: #2c3e50; }
+    .modal-close { position: absolute; top: .75rem; right: 1rem; font-size: 1.5rem;
+                   background: none; border: none; cursor: pointer; color: #888; }
+    .form-group { margin-bottom: .9rem; }
+    .form-group label { display: block; margin-bottom: .3rem; font-size: .85rem; font-weight: 600; color: #555; }
+    .form-group input { width: 100%; padding: .55rem .75rem; border: 1px solid #ddd;
+                        border-radius: 6px; font-size: .95rem; }
+    .form-group input:focus { outline: none; border-color: #3498db; }
+    .btn { display: block; width: 100%; padding: .6rem; border-radius: 6px;
+           border: none; cursor: pointer; font-size: .95rem; margin-top: .5rem; font-weight: 600; }
+    .btn-primary { background: #3498db; color: #fff; }
+    .btn-primary:hover { background: #2980b9; }
+    #modal-msg { text-align: center; font-size: .9rem; min-height: 1.3em; margin-top: .5rem; }
+    #modal-msg.ok { color: #27ae60; }
+    #modal-msg.err { color: #e74c3c; }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+    .cam-controls { display: flex; gap: .5rem; flex-wrap: wrap; margin: .5rem 0; }
+    .btn-sm { padding: .4rem .8rem; border-radius: 6px; border: none; cursor: pointer; font-size: .85rem; font-weight: 600; }
+    .btn-cam { background: #95a5a6; color: #fff; }
+    .btn-snap { background: #3498db; color: #fff; }
+    .face-preview { width: 80px; border-radius: 6px; border: 2px solid #27ae60; margin-top: .3rem; }
+
+    /* tap counter indicator */
+    #tap-indicator { position: fixed; bottom: 1.5rem; right: 1.5rem;
+                     background: rgba(0,0,0,.4); color: #fff; border-radius: 50%;
+                     width: 2rem; height: 2rem; display: none; align-items: center;
+                     justify-content: center; font-size: .8rem; font-weight: 700; }
+  </style>
+</head>
+<body>
+
+<h1>
+  <span>今</span><span id="tap-target" title="">天</span><span>天</span><span>氣</span><span>狀</span><span>況</span>
+</h1>
+<p class="subtitle" id="location-text">正在取得位置…</p>
+
+<div class="weather-card" id="weather-card">
+  <div class="loading">🌐 載入天氣資料中…</div>
+</div>
+
+<div id="tap-indicator"></div>
+
+<!-- Hidden Auth Modal -->
+<div id="auth-modal">
+  <div class="modal-box">
+    <button class="modal-close" id="modal-close">×</button>
+    <h2>🔐 進入系統</h2>
+    <video id="m-video" autoplay playsinline muted style="display:none;"></video>
+    <canvas id="m-canvas" width="320" height="240" style="display:none;"></canvas>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:.5rem;">
+        PIN 碼
+        <span id="m-cam-indicator" style="display:none;width:10px;height:10px;border-radius:50%;background:#e74c3c;animation:blink 1s infinite;"></span>
+      </label>
+      <input type="password" id="m-pin" maxlength="4" placeholder="4 位數">
+    </div>
+    <button class="btn btn-primary" id="m-submit">驗證登入</button>
+    <div id="modal-msg"></div>
+  </div>
+</div>
+
+<script src="/static/js/tap_detector.js"></script>
+<script src="/static/js/weather.js"></script>
+<script src="/static/js/face_capture.js"></script>
+<script src="/static/js/modal_auth.js"></script>
+</body>
+</html>

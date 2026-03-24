@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}我的筆記{% endblock %}
+{% block extra_head %}
+<style>
+.notes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; margin-top: 1rem; }
+.note-card { background: #fff; border-radius: 8px; padding: 1.2rem; box-shadow: 0 2px 8px rgba(0,0,0,.07); cursor: pointer; transition: box-shadow .2s; border-left: 4px solid #3498db; }
+.note-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.12); }
+.note-card h3 { font-size: 1rem; margin-bottom: .4rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.note-card p { font-size: .85rem; color: #666; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.note-card .meta { font-size: .75rem; color: #aaa; margin-top: .6rem; display: flex; align-items: center; gap: .5rem; }
+.toolbar { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+.enroll-banner { background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; padding: .75rem 1rem; margin-bottom: 1rem; font-size: .9rem; }
+.store-tabs { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.store-tab { padding: .3rem .8rem; border-radius: 20px; font-size: .85rem; font-weight: 600; cursor: pointer; text-decoration: none; border: 2px solid transparent; transition: all .15s; color: #555; background: #f0f0f0; }
+.store-tab:hover { opacity: .8; }
+.store-tab.active { color: #fff; border-color: transparent; }
+.store-tab[data-store=""]  { background: #e0e0e0; color: #333; }
+.store-tab[data-store=""].active { background: #2c3e50; color: #fff; }
+.store-tab[data-store="B"].active { background: #3498db; }
+.store-tab[data-store="C"].active { background: #27ae60; }
+.store-tab[data-store="D"].active { background: #e67e22; }
+.store-tab[data-store="E"].active { background: #e74c3c; }
+.store-tab[data-store="F"].active { background: #9b59b6; }
+.store-tab[data-store="G"].active { background: #1abc9c; }
+.store-tab[data-store="Q"].active { background: #c0392b; }
+.store-badge { display: inline-block; padding: .1rem .5rem; border-radius: 10px; font-size: .72rem; font-weight: 700; color: #fff; }
+.badge-B { background: #3498db; } .badge-C { background: #27ae60; } .badge-D { background: #e67e22; }
+.badge-E { background: #e74c3c; } .badge-F { background: #9b59b6; } .badge-G { background: #1abc9c; }
+.badge-Q { background: #c0392b; }
+</style>
+{% endblock %}
+{% block content %}
+{% if not current_user.face_encoding %}
+<div class="enroll-banner">
+  尚未登錄人臉。<button class="btn btn-secondary" id="btn-open-enroll" style="margin-left:.5rem;">立即登錄人臉</button>
+</div>
+{% endif %}
+
+<div class="toolbar">
+  <h2>我的筆記</h2>
+  <a href="{{ url_for('notes.new_note') }}" class="btn btn-primary" style="margin-left:auto;">+ 新增筆記</a>
+</div>
+
+<div class="store-tabs">
+  <a href="{{ url_for('notes.index') }}" class="store-tab {% if not current_store %}active{% endif %}" data-store="">全部</a>
+  {% for s in stores %}
+  <a href="{{ url_for('notes.index', store=s) }}" class="store-tab {% if current_store == s %}active{% endif %}" data-store="{{ s }}">{{ s }} 店</a>
+  {% endfor %}
+</div>
+
+{% if notes %}
+<div class="notes-grid">
+  {% for note in notes %}
+  <div class="note-card" onclick="location.href='/notes/{{ note.id }}'">
+    <h3>{{ note.title or '（未命名）' }}</h3>
+    <p>{{ note.content }}</p>
+    <div class="meta">
+      <span>{{ note.updated_at[:10] }}</span>
+      {% if note.store %}<span class="store-badge badge-{{ note.store }}">{{ note.store }} 店</span>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card" style="text-align:center;color:#888;padding:3rem;">
+  <p>還沒有任何筆記</p>
+  <a href="{{ url_for('notes.new_note') }}" class="btn btn-primary" style="margin-top:1rem;">新增第一篇筆記</a>
+</div>
+{% endif %}
+
+<!-- Face enroll modal -->
+<div id="enroll-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;">
+  <div class="card" style="max-width:400px;width:90%;position:relative;">
+    <button onclick="document.getElementById('enroll-modal').style.display='none'" style="position:absolute;top:.5rem;right:.75rem;background:none;border:none;font-size:1.4rem;cursor:pointer;">×</button>
+    <h3 style="margin-bottom:1rem;">登錄人臉</h3>
+    <video id="enroll-video" width="320" height="240" autoplay playsinline style="border-radius:6px;background:#000;display:block;margin-bottom:.5rem;width:100%;"></video>
+    <canvas id="enroll-canvas" width="320" height="240" style="display:none;"></canvas>
+    <div style="display:flex;gap:.5rem;margin-bottom:.75rem;">
+      <button class="btn btn-secondary" id="enroll-start-cam">開啟鏡頭</button>
+      <button class="btn btn-primary" id="enroll-capture" disabled>拍照</button>
+    </div>
+    <div id="enroll-preview" style="margin-bottom:.5rem;"></div>
+    <div id="enroll-msg" style="color:#e74c3c;min-height:1.2em;margin-bottom:.5rem;"></div>
+    <button class="btn btn-success" id="enroll-submit" style="width:100%;" disabled>儲存人臉</button>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/camera.js') }}"></script>
+<script>
+const enrollCam = new Camera('enroll-video', 'enroll-canvas');
+let enrollImage = null;
+
+document.getElementById('btn-open-enroll')?.addEventListener('click', () => {
+  document.getElementById('enroll-modal').style.display = 'flex';
+});
+document.getElementById('enroll-start-cam').onclick = () => enrollCam.start().then(() => {
+  document.getElementById('enroll-capture').disabled = false;
+  document.getElementById('enroll-start-cam').disabled = true;
+});
+document.getElementById('enroll-capture').onclick = () => {
+  enrollImage = enrollCam.capture();
+  const img = document.createElement('img');
+  img.src = enrollImage;
+  img.style.cssText = 'width:100px;border-radius:6px;border:2px solid #27ae60;';
+  document.getElementById('enroll-preview').innerHTML = '';
+  document.getElementById('enroll-preview').appendChild(img);
+  document.getElementById('enroll-submit').disabled = false;
+};
+document.getElementById('enroll-submit').onclick = async () => {
+  const res = await fetch('/face/enroll', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ face_image: enrollImage })
+  });
+  const data = await res.json();
+  const msg = document.getElementById('enroll-msg');
+  if (data.status === 'ok') {
+    msg.style.color = '#27ae60';
+    msg.textContent = '人臉登錄成功！';
+    setTimeout(() => location.reload(), 1200);
+  } else {
+    msg.textContent = data.message || '登錄失敗，請重試';
+  }
+};
+</script>
+{% endblock %}

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}人臉設定{% endblock %}
+{% block content %}
+<div class="card" style="max-width:480px;margin:2rem auto;">
+  <h2 style="margin-bottom:1.5rem;">登錄 / 更新人臉</h2>
+  {% if current_user.face_photo_url %}
+  <p style="margin-bottom:1rem;font-size:.9rem;color:#27ae60;">✅ 已有人臉資料（可重新登錄覆蓋）</p>
+  {% endif %}
+  <video id="video" width="320" height="240" autoplay playsinline style="border-radius:6px;background:#000;display:block;margin-bottom:.5rem;width:100%;"></video>
+  <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
+  <div style="display:flex;gap:.5rem;margin-bottom:.75rem;">
+    <button class="btn btn-secondary" id="btn-start">開啟鏡頭</button>
+    <button class="btn btn-primary" id="btn-capture" disabled>拍照</button>
+  </div>
+  <div id="preview" style="margin-bottom:.5rem;"></div>
+  <div id="msg" style="color:#e74c3c;min-height:1.2em;margin-bottom:.5rem;"></div>
+  <button class="btn btn-success" id="btn-enroll" style="width:100%;" disabled>儲存人臉</button>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/camera.js') }}"></script>
+<script>
+const cam = new Camera('video', 'canvas');
+let captured = null;
+
+document.getElementById('btn-start').onclick = () => cam.start().then(() => {
+  document.getElementById('btn-capture').disabled = false;
+  document.getElementById('btn-start').disabled = true;
+});
+document.getElementById('btn-capture').onclick = () => {
+  captured = cam.capture();
+  const img = document.createElement('img');
+  img.src = captured;
+  img.style.cssText = 'width:120px;border-radius:6px;border:2px solid #3498db;';
+  document.getElementById('preview').innerHTML = '';
+  document.getElementById('preview').appendChild(img);
+  document.getElementById('btn-enroll').disabled = false;
+};
+document.getElementById('btn-enroll').onclick = async () => {
+  const msg = document.getElementById('msg');
+  const res = await fetch('/face/enroll', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ face_image: captured })
+  });
+  const data = await res.json();
+  if (data.status === 'ok') {
+    msg.style.color = '#27ae60';
+    msg.textContent = '人臉登錄成功！';
+  } else {
+    msg.textContent = data.message || '失敗，請重試';
+  }
+};
+</script>
+{% endblock %}

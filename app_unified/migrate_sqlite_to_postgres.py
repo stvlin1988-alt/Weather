@@ -100,7 +100,7 @@ def migrate(sqlite_path: str, dry_run: bool = False):
         print(f"\nMigrating {len(users)} users…")
         for row in users:
             face_enc_bytes = encoding_pickle_to_numpy(row['face_encoding'])
-            face_url = upload_photo_to_r2(row.get('face_photo_path'), row['id'], app)
+            face_url = upload_photo_to_r2(row['face_photo_path'], row['id'], app)
             if face_url:
                 print(f"  Uploaded photo for user {row['username']} → {face_url}")
 
@@ -129,9 +129,9 @@ def migrate(sqlite_path: str, dry_run: bool = False):
                 user_id=row['user_id'],
                 title=row['title'] or '',
                 content=row['content'] or '',
-                ai_summary=row.get('ai_summary'),
-                ai_outline=row.get('ai_outline'),
-                store=row.get('store'),
+                ai_summary=row['ai_summary'],
+                ai_outline=row['ai_outline'],
+                store=row['store'],
                 created_at=parse_dt(row['created_at']),
                 updated_at=parse_dt(row['updated_at']),
             )

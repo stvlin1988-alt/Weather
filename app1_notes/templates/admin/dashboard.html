@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}管理後台{% endblock %}
+{% block extra_head %}
+<style>
+table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+th, td { text-align: left; padding: .6rem .75rem; border-bottom: 1px solid #eee; font-size: .9rem; }
+th { background: #f8f9fa; font-weight: 700; }
+.badge { display: inline-block; padding: .2rem .5rem; border-radius: 12px; font-size: .75rem; font-weight: 700; }
+.badge-admin { background: #d1ecf1; color: #0c5460; }
+.badge-user { background: #e2e3e5; color: #383d41; }
+.badge-active { background: #d4edda; color: #155724; }
+.badge-inactive { background: #f8d7da; color: #721c24; }
+</style>
+{% endblock %}
+{% block content %}
+<h2>管理後台</h2>
+<div class="card" style="margin-top:1rem;">
+  <h3>使用者列表</h3>
+  <table>
+    <thead><tr><th>ID</th><th>名稱</th><th>角色</th><th>狀態</th><th>建立時間</th><th>操作</th></tr></thead>
+    <tbody>
+    {% for user in users %}
+    <tr id="user-{{ user.id }}">
+      <td>{{ user.id }}</td>
+      <td>{{ user.username }}</td>
+      <td><span class="badge badge-{{ user.role }}">{{ user.role }}</span></td>
+      <td><span class="badge badge-{{ 'active' if user.is_active else 'inactive' }}" id="status-{{ user.id }}">{{ '啟用' if user.is_active else '停用' }}</span></td>
+      <td>{{ user.created_at[:10] }}</td>
+      <td>
+        <button class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .7rem;" onclick="toggleUser({{ user.id }})">切換狀態</button>
+        <select onchange="setRole({{ user.id }}, this.value)" style="margin-left:.3rem;font-size:.8rem;padding:.25rem;">
+          <option value="user" {% if user.role=='user' %}selected{% endif %}>user</option>
+          <option value="admin" {% if user.role=='admin' %}selected{% endif %}>admin</option>
+        </select>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="card" style="margin-top:1rem;">
+  <h3>最近筆記（前20篇）</h3>
+  <table>
+    <thead><tr><th>ID</th><th>使用者</th><th>標題</th><th>更新時間</th></tr></thead>
+    <tbody>
+    {% for note in notes %}
+    <tr>
+      <td>{{ note.id }}</td>
+      <td>{{ note.author.username }}</td>
+      <td><a href="/notes/{{ note.id }}">{{ note.title or '（未命名）' }}</a></td>
+      <td>{{ note.updated_at[:16] }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function toggleUser(id) {
+  const res = await fetch(`/admin/users/${id}/toggle`, { method: 'POST' });
+  const data = await res.json();
+  if (data.status === 'ok') {
+    const el = document.getElementById(`status-${id}`);
+    el.textContent = data.is_active ? '啟用' : '停用';
+    el.className = `badge badge-${data.is_active ? 'active' : 'inactive'}`;
+  } else alert(data.message);
+}
+async function setRole(id, role) {
+  await fetch(`/admin/users/${id}/set-role`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ role })
+  });
+}
+</script>
+{% endblock %}
