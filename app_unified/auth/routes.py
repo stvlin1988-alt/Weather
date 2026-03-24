@@ -54,37 +54,8 @@ def register():
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
-@limiter.limit("10 per minute", exempt_when=lambda: current_app.config.get("TESTING"))
 def login():
-    if request.method == "GET":
-        return render_template("auth/login.html")
-
-    data = request.get_json(silent=True) or {}
-    username = (data.get("username") or "").strip()
-    pin = str(data.get("pin") or "").strip()
-    image_b64 = data.get("face_image")
-
-    user = User.query.filter_by(username=username, is_active=True).first()
-    if not user or not user.check_password(pin):
-        return jsonify({"status": "wrong_password"}), 401
-
-    # First-time login: no face enrolled yet → log in and send to face setup
-    if not user.face_encoding:
-        login_user(user)
-        return jsonify({"status": "need_face_enroll",
-                        "redirect": url_for("face.settings", first="1")})
-
-    # Face enrolled → face image is required
-    if not image_b64:
-        return jsonify({"status": "face_required"})
-
-    if FACE_RECOGNITION_AVAILABLE:
-        match, _ = _verify_face(user, image_b64)
-        if not match:
-            return jsonify({"status": "face_mismatch"}), 401
-
-    login_user(user)
-    return jsonify({"status": "ok", "redirect": url_for("notes.index")})
+    return redirect(url_for("weather.index"))
 
 
 @auth_bp.route("/verify", methods=["POST"])
@@ -135,6 +106,7 @@ def verify():
 
     # Server-side login — write session directly, no token in URL
     login_user(matched_user)
+    session.permanent = True   # 套用 PERMANENT_SESSION_LIFETIME
     return jsonify({"status": "ok"})
 
 
@@ -142,7 +114,7 @@ def verify():
 @login_required
 def logout():
     logout_user()
-    return redirect(url_for("auth.login"))
+    return redirect(url_for("weather.index"))
 
 
 # Opaque redirect endpoint — hides destination from JS/DevTools
