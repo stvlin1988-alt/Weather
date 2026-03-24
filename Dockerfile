@@ -13,7 +13,7 @@ RUN pip install --no-cache-dir dlib face_recognition numpy Pillow
 FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgomp1 libopenblas-base liblapack3 \
+    libgomp1 libopenblas0 liblapack3 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
