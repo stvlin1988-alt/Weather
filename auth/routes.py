@@ -161,8 +161,8 @@ def _verify_face(user: User, image_b64: str):
         if known is None:
             return False, 0.0
         distances = face_recognition.face_distance([known], encodings[0])
-        logger.info("_verify_face: user=%s distance=%.3f", user.username, float(distances[0]))
-        match = bool(face_recognition.compare_faces([known], encodings[0], tolerance=0.55)[0])
+        logger.warning("_verify_face: user=%s distance=%.3f", user.username, float(distances[0]))
+        match = bool(face_recognition.compare_faces([known], encodings[0], tolerance=0.62)[0])
         confidence = float(1 - distances[0])
         return match, confidence
     except Exception:
