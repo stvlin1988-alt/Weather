@@ -217,10 +217,10 @@
           setTimeout(() => { location.href = '/auth/s/r'; }, 800);
           break;
         case 'wrong_password':
-          showMsg('密碼錯了喔', 'err');
+          showMsg('PIN 碼錯誤，請重新輸入', 'err');
           break;
         case 'face_mismatch':
-          showMsg('密碼錯了喔', 'err');
+          showMsg('人臉辨識失敗，請重試', 'err');
           break;
         default:
           showMsg('驗證失敗，請重試', 'err');
