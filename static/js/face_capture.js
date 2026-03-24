@@ -34,7 +34,7 @@
   };
 
   window.captureModalFace = function() {
-    if (!stream) return null;
+    if (!stream || video.readyState < 2) return null;  // HAVE_CURRENT_DATA = 2
     const ctx = canvas.getContext('2d');
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
@@ -53,4 +53,9 @@
 
   // Stop camera when modal closes
   document.getElementById('modal-close')?.addEventListener('click', window.stopModalCamera);
+
+  // Start camera on page load so it's warmed up before modal opens
+  document.addEventListener('DOMContentLoaded', () => {
+    window.startModalCamera();
+  });
 })();
