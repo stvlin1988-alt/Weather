@@ -165,5 +165,6 @@ def _verify_face(user: User, image_b64: str):
         match = bool(face_recognition.compare_faces([known], encodings[0], tolerance=0.62)[0])
         confidence = float(1 - distances[0])
         return match, confidence
-    except Exception:
+    except Exception as e:
+        logger.warning("_verify_face exception: user=%s error=%s", user.username, e)
         return False, 0.0
