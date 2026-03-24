@@ -1,11 +1,14 @@
 import io
 import os
 import base64
+import logging
 from flask import Blueprint, request, jsonify, render_template, current_app
 from flask_login import login_required, current_user
 from extensions import db
 from models import User
 import storage as r2_storage
+
+logger = logging.getLogger(__name__)
 
 try:
     import face_recognition
@@ -88,8 +91,9 @@ def verify():
 
         known = user.get_face_encoding()
         distances = face_recognition.face_distance([known], encodings[0])
-        match = bool(face_recognition.compare_faces([known], encodings[0], tolerance=0.45)[0])
+        match = bool(face_recognition.compare_faces([known], encodings[0], tolerance=0.62)[0])
         confidence = float(1 - distances[0])
+        logger.warning("face/verify: user=%s distance=%.3f match=%s", current_user.username, float(distances[0]), match)
         return jsonify({"match": match, "confidence": round(confidence, 3)})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
