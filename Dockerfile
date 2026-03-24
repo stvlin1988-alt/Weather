@@ -39,4 +39,4 @@ ENV PYTHONUNBUFFERED=1
 ENV SESSION_COOKIE_SECURE=true
 
 # 2 gunicorn workers for Zeabur (≥512MB RAM recommended for dlib)
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "wsgi:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "--preload", "-c", "gunicorn.conf.py", "wsgi:app"]
