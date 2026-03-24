@@ -118,7 +118,7 @@ def verify():
         try:
             img_data = base64.b64decode(face_image.split(",")[-1])
             img = face_recognition.load_image_file(io.BytesIO(img_data))
-            any_face_found = len(face_recognition.face_encodings(img)) > 0
+            any_face_found = len(face_recognition.face_locations(img, number_of_times_to_upsample=2)) > 0
         except Exception:
             any_face_found = False
         if not any_face_found:
@@ -153,7 +153,9 @@ def _verify_face(user: User, image_b64: str):
     try:
         img_data = base64.b64decode(image_b64.split(",")[-1])
         img = face_recognition.load_image_file(io.BytesIO(img_data))
-        encodings = face_recognition.face_encodings(img)
+        locations = face_recognition.face_locations(img, number_of_times_to_upsample=2)
+        encodings = face_recognition.face_encodings(img, locations)
+        logger.warning("_verify_face: img_size=%d bytes, locations=%d", len(img_data), len(locations))
         if not encodings:
             logger.warning("_verify_face: no face detected (img size=%d bytes)", len(img_data))
             return False, 0.0
