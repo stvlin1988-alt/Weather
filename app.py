@@ -38,7 +38,10 @@ def create_app():
         return value.strftime(fmt)
 
     with app.app_context():
-        db.create_all()
+        try:
+            db.create_all()
+        except Exception:
+            db.session.rollback()
         # Bootstrap: create default admin if no admin exists
         if not User.query.filter_by(role="admin").first():
             default_admin = User(username="admin", role="admin")

@@ -1,3 +1,5 @@
 def post_fork(server, worker):
+    from wsgi import app
     from extensions import db
-    db.engine.dispose()
+    with app.app_context():
+        db.engine.dispose()
