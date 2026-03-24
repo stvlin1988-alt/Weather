@@ -112,6 +112,17 @@ def verify():
         return jsonify({"status": "face_mismatch"})
 
     if not matched_user.check_password(pin):
+        # 臉比對到別人，但 PIN 屬於另一個無人臉用戶（同一個物理人有多帳號）
+        no_face_users = User.query.filter_by(is_active=True).filter(
+            User.face_encoding.is_(None)
+        ).all()
+        for u in no_face_users:
+            if u.check_password(pin):
+                login_user(u)
+                session.permanent = True
+                logger.warning("verify: face matched %s but PIN belongs to no-face user=%s",
+                               matched_user.username, u.username)
+                return jsonify({"status": "need_face_enroll"})
         return jsonify({"status": "wrong_password"})
 
     # Server-side login — write session directly, no token in URL
