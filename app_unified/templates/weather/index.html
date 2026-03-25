@@ -107,6 +107,8 @@
       reset();
       const modal = document.getElementById('auth-modal');
       modal?.classList.add('open');
+      const _initMsg = document.getElementById('modal-msg');
+      if (_initMsg) { _initMsg.textContent = '鏡頭啟動中…'; _initMsg.className = ''; }
       if (window.startModalCamera) window.startModalCamera();
     }
   });
@@ -182,6 +184,13 @@
 
   function showMsg(text, cls) { msgEl.textContent = text; msgEl.className = cls || ''; }
 
+  window.onCameraError = function() {
+    showMsg('相機無法啟動，請確認瀏覽器相機權限後重新整理', 'err');
+  };
+  window.onCameraReady = function() {
+    if (msgEl.className === '' && msgEl.textContent.includes('鏡頭')) showMsg('');
+  };
+
   closeBtn?.addEventListener('click', () => {
     modal?.classList.remove('open');
     showMsg('');
@@ -199,7 +208,12 @@
     const pin = document.getElementById('m-pin')?.value.trim() || '';
     const faceImage = window.captureModalFace ? window.captureModalFace() : null;
     if (!faceImage) {
-      showMsg('相機尚未就緒，請稍候再試', 'err');
+      const state = window.getCameraState ? window.getCameraState() : 'unknown';
+      if (state === 'failed') {
+        showMsg('相機無法啟動，請確認瀏覽器相機權限後重新整理', 'err');
+      } else {
+        showMsg('鏡頭啟動中，請稍候再試', 'err');
+      }
       return;
     }
     submitBtn.disabled = true;

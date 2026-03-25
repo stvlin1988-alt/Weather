@@ -6,15 +6,18 @@
   const video = document.getElementById('m-video');
   const canvas = document.getElementById('m-canvas');
   let stream = null;
+  let cameraState = 'idle'; // idle | starting | ready | failed
 
   window.startModalCamera = function() {
     if (stream) return; // already running
+    cameraState = 'starting';
 
     const constraints = { video: { facingMode: 'user' }, audio: false };
 
     navigator.mediaDevices.getUserMedia(constraints)
       .catch(() => navigator.mediaDevices.getUserMedia({ video: true, audio: false }))
       .then(s => {
+        cameraState = 'ready';
         stream = s;
         video.srcObject = s;
         video.muted = true;
@@ -23,15 +26,20 @@
       .then(() => {
         const indicator = document.getElementById('m-cam-indicator');
         if (indicator) indicator.style.display = 'inline-block';
+        if (window.onCameraReady) window.onCameraReady();
       })
-      .catch(err => {
+      .catch(() => {
+        cameraState = 'failed';
         const indicator = document.getElementById('m-cam-indicator');
         if (indicator) {
           indicator.style.background = '#aaa';
           indicator.style.animation = 'none';
         }
+        if (window.onCameraError) window.onCameraError();
       });
   };
+
+  window.getCameraState = function() { return cameraState; };
 
   window.captureModalFace = function() {
     if (!stream || video.readyState < 2 || video.videoWidth === 0) return null;  // HAVE_CURRENT_DATA = 2
@@ -46,6 +54,7 @@
     if (stream) {
       stream.getTracks().forEach(t => t.stop());
       stream = null;
+      cameraState = 'idle';
     }
     const indicator = document.getElementById('m-cam-indicator');
     if (indicator) indicator.style.display = 'none';
