@@ -54,7 +54,6 @@
   // Stop camera when modal closes
   document.getElementById('modal-close')?.addEventListener('click', window.stopModalCamera);
 
-  // Start camera on page load so it's warmed up before modal opens
-  // Script loads after DOM is ready (body end), so call directly
-  window.startModalCamera();
+  // Camera starts when modal opens (user gesture), not on page load
+  // Mobile browsers require getUserMedia to be called within a user gesture
 })();

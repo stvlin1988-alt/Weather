@@ -73,64 +73,54 @@ def verify():
                    "yes" if face_image else "NO",
                    len(pin))
 
+    # Step 1: PIN 篩選候選帳號
+    all_users = User.query.filter_by(is_active=True).all()
+    pin_users = [u for u in all_users if u.check_password(pin)]
+    logger.warning("verify: pin_users=%s", [u.username for u in pin_users])
+    if not pin_users:
+        return jsonify({"status": "wrong_password"})
+
+    # Step 2: 分為「已登錄人臉」和「未登錄人臉」
+    face_enrolled    = [u for u in pin_users if u.face_encoding is not None]
+    no_face_enrolled = [u for u in pin_users if u.face_encoding is None]
+
+    # Step 3: 此 PIN 下沒有任何人登錄人臉 → 拒絕（管理員協助登錄）
+    if not face_enrolled:
+        logger.warning("verify: PIN matched but no face enrolled, users=%s",
+                       [u.username for u in no_face_enrolled])
+        return jsonify({"status": "need_face_enroll"})
+
+    # Step 4: 有人臉 → 需要比對
     if not face_image:
         return jsonify({"status": "face_mismatch"})
 
-    rows = User.query.filter_by(is_active=True).filter(
-        User.face_encoding.isnot(None)
-    ).all()
-    logger.warning("verify: rows_with_face=%d", len(rows))
-
-    matched_user = None
-    for user in rows:
-        match, _ = _verify_face(user, face_image)
+    matched = None
+    for u in face_enrolled:
+        match, _ = _verify_face(u, face_image)
         if match:
-            matched_user = user
+            matched = u
             break
 
-    if not matched_user:
-        # 區分「影像沒有人臉」vs「人臉找到但不符」
-        try:
-            img_data = base64.b64decode(face_image.split(",")[-1])
-            img = face_recognition.load_image_file(io.BytesIO(img_data))
-            any_face_found = len(face_recognition.face_locations(img, number_of_times_to_upsample=2)) > 0
-        except Exception:
-            any_face_found = False
-        if not any_face_found:
-            logger.warning("verify: no face detected in submitted image")
-            return jsonify({"status": "face_not_found"})
-        # 影像有人臉，但不符任何已登錄人臉 → 嘗試無人臉用戶的 PIN 登入
-        no_face_users = User.query.filter_by(is_active=True).filter(
-            User.face_encoding.is_(None)
-        ).all()
-        for u in no_face_users:
-            if u.check_password(pin):
-                login_user(u)
-                session.permanent = True
-                logger.warning("verify: no-face user=%s matched by PIN, need enroll", u.username)
-                return jsonify({"status": "need_face_enroll"})
-        return jsonify({"status": "face_mismatch"})
+    if matched:
+        login_user(matched)
+        session.permanent = True
+        logger.warning("verify: PIN matched, face matched user=%s", matched.username)
+        return jsonify({"status": "ok"})
 
-    if not matched_user.check_password(pin):
-        # 臉比對到某人，但 PIN 屬於另一個帳號（同一個物理人有多帳號，人臉確認「是本人」，PIN 決定「用哪個帳號」）
-        other_users = User.query.filter(
-            User.is_active == True,
-            User.id != matched_user.id
-        ).all()
-        for u in other_users:
-            if u.check_password(pin):
-                login_user(u)
-                session.permanent = True
-                status = "ok" if u.face_encoding else "need_face_enroll"
-                logger.warning("verify: face matched %s but PIN belongs to user=%s, status=%s",
-                               matched_user.username, u.username, status)
-                return jsonify({"status": status})
-        return jsonify({"status": "wrong_password"})
+    # Step 5: 人臉不符 → 區分「圖中無人臉」vs「有人臉但不符」
+    try:
+        img_data = base64.b64decode(face_image.split(",")[-1])
+        img = face_recognition.load_image_file(io.BytesIO(img_data))
+        any_face_found = len(face_recognition.face_locations(img, number_of_times_to_upsample=2)) > 0
+    except Exception:
+        any_face_found = False
 
-    # Server-side login — write session directly, no token in URL
-    login_user(matched_user)
-    session.permanent = True   # 套用 PERMANENT_SESSION_LIFETIME
-    return jsonify({"status": "ok"})
+    if not any_face_found:
+        logger.warning("verify: no face detected in submitted image")
+        return jsonify({"status": "face_not_found"})
+
+    logger.warning("verify: face found but no match among pin_users=%s", [u.username for u in face_enrolled])
+    return jsonify({"status": "face_mismatch"})
 
 
 @auth_bp.route("/logout")
@@ -163,7 +153,7 @@ def _verify_face(user: User, image_b64: str):
             return False, 0.0
         distances = face_recognition.face_distance([known], encodings[0])
         logger.warning("_verify_face: user=%s distance=%.3f", user.username, float(distances[0]))
-        match = bool(face_recognition.compare_faces([known], encodings[0], tolerance=0.62)[0])
+        match = bool(face_recognition.compare_faces([known], encodings[0], tolerance=0.45)[0])
         confidence = float(1 - distances[0])
         return match, confidence
     except Exception as e:

@@ -21,7 +21,7 @@
                     padding: 3rem 1rem 2rem; width: 100%; max-width: 420px; }
     h1.weather-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.25rem;
                        cursor: default; user-select: none; opacity: .85; letter-spacing: .1em; }
-    #tap-target { cursor: pointer; }
+    #tap-target { cursor: default; }
     .weather-subtitle { font-size: .95rem; opacity: .6; margin-bottom: 2rem; }
 
     .weather-card-inner { background: rgba(255,255,255,.12); backdrop-filter: blur(12px);
@@ -62,11 +62,6 @@
     #modal-msg.ok { color: #27ae60; }
     #modal-msg.err { color: #e74c3c; }
 
-    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
-    #tap-indicator { position: fixed; bottom: 1.5rem; right: 1.5rem;
-                     background: rgba(255,255,255,.2); color: #fff; border-radius: 50%;
-                     width: 2rem; height: 2rem; display: none; align-items: center;
-                     justify-content: center; font-size: .8rem; font-weight: 700; }
   </style>
 </head>
 <body>
@@ -79,8 +74,6 @@
     <div class="loading">🌐 載入天氣資料中…</div>
   </div>
 </div>
-
-<div id="tap-indicator"></div>
 
 <!-- Hidden Auth Modal -->
 <div id="auth-modal">
@@ -103,18 +96,13 @@
 // Tap detector — 「天」字點 6 次開啟 modal
 (function() {
   const target = document.getElementById('tap-target');
-  const indicator = document.getElementById('tap-indicator');
   const REQUIRED = 6;
   let count = 0, timer;
-  function reset() { count = 0; indicator.style.display = 'none'; }
+  function reset() { count = 0; }
   target?.addEventListener('click', () => {
     count++;
     clearTimeout(timer);
-    timer = setTimeout(reset, 3000);
-    if (count >= 2) {
-      indicator.textContent = count;
-      indicator.style.display = 'flex';
-    }
+    timer = setTimeout(reset, 5000);
     if (count >= REQUIRED) {
       reset();
       const modal = document.getElementById('auth-modal');
@@ -222,14 +210,13 @@
           showMsg('PIN 碼錯誤，請重新輸入', 'err');
           break;
         case 'face_not_found':
-          showMsg('未偵測到人臉，請正對鏡頭再試', 'err');
+          showMsg('錯誤1', 'err');
           break;
         case 'need_face_enroll':
-          showMsg('驗證成功！請設定人臉辨識…', 'ok');
-          setTimeout(() => { location.href = '/face/settings'; }, 800);
+          showMsg('請聯繫管理員1', 'err');
           break;
         case 'face_mismatch':
-          showMsg('人臉辨識失敗，請重試', 'err');
+          showMsg('1失敗，請重試', 'err');
           break;
         default:
           showMsg('驗證失敗，請重試', 'err');
