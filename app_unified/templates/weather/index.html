@@ -158,9 +158,19 @@
       });
   }
 
-  // 直接載入，不等待位置授權
-  locText.textContent = '台北市';
-  loadWeather('Taipei');
+  // IP 定位取城市，不需瀏覽器授權
+  locText.textContent = '正在取得位置…';
+  fetch('https://ip-api.com/json?fields=city,status', { cache: 'no-store' })
+    .then(r => r.json())
+    .then(geo => {
+      const city = (geo.status === 'success' && geo.city) ? geo.city : 'Taipei';
+      locText.textContent = city;
+      loadWeather(city);
+    })
+    .catch(() => {
+      locText.textContent = '台北市';
+      loadWeather('Taipei');
+    });
 })();
 
 // Modal auth
