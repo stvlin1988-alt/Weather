@@ -2,22 +2,25 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify, render_template, current_app
 from flask_login import login_required, current_user
 from extensions import db
-from models import Note
+from models import Note, STORES, STATUS_CHOICES
 
 notes_bp = Blueprint("notes", __name__, url_prefix="/notes")
-
-STORES = ["B", "C", "D", "E", "F", "G", "Q"]
 
 
 @notes_bp.route("/")
 @login_required
 def index():
     store_filter = request.args.get("store", "")
+    status_filter = request.args.get("status", "")
     query = Note.query.filter_by(user_id=current_user.id)
     if store_filter in STORES:
         query = query.filter_by(store=store_filter)
+    if status_filter in STATUS_CHOICES:
+        query = query.filter_by(status=status_filter)
     notes = query.order_by(Note.updated_at.desc()).all()
-    return render_template("notes/index.html", notes=notes, stores=STORES, current_store=store_filter)
+    return render_template("notes/index.html", notes=notes, stores=STORES,
+                           current_store=store_filter, status_choices=STATUS_CHOICES,
+                           current_status=status_filter)
 
 
 @notes_bp.route("/new", methods=["GET"])
@@ -30,13 +33,16 @@ def new_note():
 @login_required
 def list_notes():
     store_filter = request.args.get("store", "")
+    status_filter = request.args.get("status", "")
     query = Note.query.filter_by(user_id=current_user.id)
     if store_filter in STORES:
         query = query.filter_by(store=store_filter)
+    if status_filter in STATUS_CHOICES:
+        query = query.filter_by(status=status_filter)
     notes = query.order_by(Note.updated_at.desc()).all()
     return jsonify([{
         "id": n.id, "title": n.title, "content": n.content,
-        "store": n.store,
+        "store": n.store, "status": n.status or "pending",
         "created_at": n.created_at.isoformat() if n.created_at else "",
         "updated_at": n.updated_at.isoformat() if n.updated_at else "",
     } for n in notes])
@@ -47,12 +53,18 @@ def list_notes():
 def create_note():
     data = request.get_json(silent=True) or {}
     now = datetime.utcnow()
-    store = data.get("store") if data.get("store") in STORES else None
+    # Admin可手選店別；員工自動帶入所屬店別
+    if current_user.is_admin():
+        store = data.get("store") if data.get("store") in STORES else None
+    else:
+        store = current_user.store if current_user.store in STORES else None
+    status = data.get("status") if data.get("status") in STATUS_CHOICES else "pending"
     note = Note(
         user_id=current_user.id,
         title=data.get("title", "未命名筆記"),
         content=data.get("content", ""),
         store=store,
+        status=status,
         created_at=now,
         updated_at=now,
     )
@@ -67,7 +79,8 @@ def get_note(note_id):
     note = Note.query.filter_by(id=note_id, user_id=current_user.id).first_or_404()
     return jsonify({
         "id": note.id, "title": note.title, "content": note.content,
-        "store": note.store, "ai_summary": note.ai_summary, "ai_outline": note.ai_outline,
+        "store": note.store, "status": note.status or "pending",
+        "ai_summary": note.ai_summary, "ai_outline": note.ai_outline,
         "created_at": note.created_at.isoformat() if note.created_at else "",
         "updated_at": note.updated_at.isoformat() if note.updated_at else "",
     })
@@ -82,8 +95,10 @@ def update_note(note_id):
         note.title = data["title"]
     if "content" in data:
         note.content = data["content"]
-    if "store" in data:
+    if "store" in data and current_user.is_admin():
         note.store = data["store"] if data["store"] in STORES else None
+    if "status" in data and data["status"] in STATUS_CHOICES:
+        note.status = data["status"]
     note.updated_at = datetime.utcnow()
     db.session.commit()
     return jsonify({"status": "ok"})

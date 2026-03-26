@@ -1,9 +1,10 @@
 import io
 import base64
-from flask import Blueprint, render_template, jsonify, request, abort
+from datetime import datetime, timedelta
+from flask import Blueprint, render_template, jsonify, request, abort, current_app
 from flask_login import login_required, current_user
 from extensions import db
-from models import User, Note
+from models import User, Note, STORES, STATUS_CHOICES
 
 try:
     import face_recognition
@@ -25,7 +26,8 @@ def dashboard():
     require_admin()
     users = User.query.order_by(User.created_at.desc()).all()
     notes = Note.query.order_by(Note.updated_at.desc()).limit(20).all()
-    return render_template("admin/dashboard.html", users=users, notes=notes)
+    return render_template("admin/dashboard.html", users=users, notes=notes,
+                           stores=STORES, status_choices=STATUS_CHOICES)
 
 
 @admin_bp.route("/users/create", methods=["POST"])
@@ -36,6 +38,7 @@ def create_user():
     username = (data.get("username") or "").strip()
     pin = str(data.get("pin") or "").strip()
     face_image = data.get("face_image")
+    store = (data.get("store") or "").strip()
 
     if not username or not pin:
         return jsonify({"status": "error", "message": "請填寫帳號和 PIN"}), 400
@@ -43,7 +46,7 @@ def create_user():
     if User.query.filter_by(username=username).first():
         return jsonify({"status": "error", "message": "帳號已存在"}), 409
 
-    user = User(username=username)
+    user = User(username=username, store=store if store in STORES else None)
     user.set_password(pin)
 
     if face_image and FACE_RECOGNITION_AVAILABLE:
@@ -97,3 +100,71 @@ def set_role(user_id):
     user.role = role
     db.session.commit()
     return jsonify({"status": "ok"})
+
+
+@admin_bp.route("/users/<int:user_id>/set-store", methods=["POST"])
+@login_required
+def set_store(user_id):
+    require_admin()
+    user = User.query.get_or_404(user_id)
+    data = request.get_json(silent=True) or {}
+    store = data.get("store", "")
+    user.store = store if store in STORES else None
+    db.session.commit()
+    return jsonify({"status": "ok", "store": user.store})
+
+
+@admin_bp.route("/ai/store-summary", methods=["POST"])
+@login_required
+def store_summary():
+    require_admin()
+    api_key = current_app.config.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return jsonify({"status": "error", "message": "未設定 Anthropic API Key"}), 503
+
+    data = request.get_json(silent=True) or {}
+    store = data.get("store", "all")
+    days = int(data.get("days", 7))
+    since = datetime.utcnow() - timedelta(days=days)
+
+    query = Note.query.filter(Note.updated_at >= since)
+    if store != "all" and store in STORES:
+        query = query.filter_by(store=store)
+    notes = query.order_by(Note.store, Note.updated_at.desc()).all()
+
+    if not notes:
+        return jsonify({"status": "ok", "summary": "（近期無筆記）"})
+
+    STATUS_LABELS = {
+        "pending": "待處理", "in_progress": "處理中",
+        "tracking": "持續追蹤", "resolved": "已解決",
+    }
+    lines = []
+    for n in notes:
+        s_label = STATUS_LABELS.get(n.status or "pending", n.status)
+        store_tag = f"[{n.store}店]" if n.store else "[未分店]"
+        author = n.author.username if n.author else "?"
+        date_str = n.updated_at.strftime("%m/%d") if n.updated_at else ""
+        lines.append(f"{store_tag}[{date_str}][{author}][{s_label}] {n.title}\n{n.content}")
+
+    store_label = f"「{store}店」" if store != "all" else "全店"
+    prompt = (
+        f"以下是{store_label}近 {days} 天的員工筆記（依店別排列）：\n\n"
+        + "\n---\n".join(lines)
+        + f"\n\n請用繁體中文：\n1. 依店別條列整理主要問題與事件\n"
+        "2. 標示哪些狀態為「待處理」或「持續追蹤」需要關注\n"
+        "3. 給主管的建議行動\n"
+        "請用 Markdown 格式回覆。"
+    )
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=2048,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return jsonify({"status": "ok", "summary": msg.content[0].text})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500

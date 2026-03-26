@@ -10,9 +10,16 @@ th { background: #f8f9fa; font-weight: 700; }
 .badge-user { background: #e2e3e5; color: #383d41; }
 .badge-active { background: #d4edda; color: #155724; }
 .badge-inactive { background: #f8d7da; color: #721c24; }
+.status-badge { display: inline-block; padding: .1rem .45rem; border-radius: 10px; font-size: .72rem; font-weight: 700; }
+.status-pending     { background: #ecf0f1; color: #7f8c8d; }
+.status-in_progress { background: #d6eaf8; color: #2980b9; }
+.status-tracking    { background: #fdebd0; color: #e67e22; }
+.status-resolved    { background: #d5f5e3; color: #27ae60; }
 @media (max-width: 600px) {
   th:nth-child(5), td:nth-child(5) { display: none; }
 }
+.ai-summary-output { background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 1rem; margin-top: .75rem; white-space: pre-wrap; font-size: .9rem; line-height: 1.6; max-height: 400px; overflow-y: auto; }
+.store-chip { display:inline-block; padding:.2rem .55rem; border-radius:12px; font-size:.8rem; font-weight:700; color:#fff; cursor:default; }
 #enroll-preview { display:none; flex-direction:column; align-items:center; gap:.5rem; margin-top:.5rem; }
 #enroll-video { width:100%; max-width:320px; border-radius:8px; background:#000; }
 #enroll-canvas { display:none; }
@@ -21,6 +28,29 @@ th { background: #f8f9fa; font-weight: 700; }
 {% endblock %}
 {% block content %}
 <h2>管理後台</h2>
+
+<!-- AI 店務摘要 -->
+<div class="card" style="margin-top:1rem;">
+  <h3>🤖 AI 店務摘要</h3>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-top:.75rem;">
+    <select id="ai-store-select" style="font-size:.9rem;padding:.4rem .6rem;border-radius:6px;border:1px solid #ddd;min-height:36px;">
+      <option value="all">全店</option>
+      {% for s in stores %}
+      <option value="{{ s }}">{{ s }} 店</option>
+      {% endfor %}
+    </select>
+    <select id="ai-days-select" style="font-size:.9rem;padding:.4rem .6rem;border-radius:6px;border:1px solid #ddd;min-height:36px;">
+      <option value="3">近 3 天</option>
+      <option value="7" selected>近 7 天</option>
+      <option value="14">近 14 天</option>
+      <option value="30">近 30 天</option>
+    </select>
+    <button class="btn btn-primary" onclick="generateSummary()" id="btn-summary">產生摘要</button>
+    <span id="summary-status" style="font-size:.85rem;color:#666;"></span>
+  </div>
+  <div id="ai-summary-output" class="ai-summary-output" style="display:none;"></div>
+</div>
+
 <div class="card" style="margin-top:1rem;">
   <h3>新增員工帳號</h3>
   <div style="display:flex;flex-direction:column;gap:.75rem;max-width:400px;">
@@ -31,6 +61,15 @@ th { background: #f8f9fa; font-weight: 700; }
     <div>
       <label style="display:block;font-size:.9rem;margin-bottom:.25rem;">PIN（4位數）</label>
       <input id="new-pin" type="password" class="form-control" inputmode="numeric" maxlength="4" placeholder="輸入 PIN" style="font-size:1rem;">
+    </div>
+    <div>
+      <label style="display:block;font-size:.9rem;margin-bottom:.25rem;">所屬店別</label>
+      <select id="new-store" style="font-size:1rem;padding:.4rem .6rem;border-radius:6px;border:1px solid #ddd;min-height:36px;width:100%;">
+        <option value="">— 請選擇 —</option>
+        {% for s in stores %}
+        <option value="{{ s }}">{{ s }} 店</option>
+        {% endfor %}
+      </select>
     </div>
     <div>
       <button class="btn btn-secondary" onclick="startEnrollCamera()" id="btn-open-camera">開啟鏡頭</button>
@@ -49,12 +88,26 @@ th { background: #f8f9fa; font-weight: 700; }
 <div class="card" style="margin-top:1rem;">
   <h3>使用者列表</h3>
   <table>
-    <thead><tr><th>ID</th><th>名稱</th><th>角色</th><th>狀態</th><th>建立時間</th><th>操作</th></tr></thead>
+    <thead><tr><th>ID</th><th>名稱</th><th>店別</th><th>角色</th><th>狀態</th><th>建立時間</th><th>操作</th></tr></thead>
     <tbody>
+    {% set store_colors = {'B':'#3498db','C':'#27ae60','D':'#e67e22','E':'#e74c3c','F':'#9b59b6','G':'#1abc9c','J':'#f39c12','JJ':'#8e44ad','K':'#2980b9','Q':'#c0392b','S':'#16a085'} %}
     {% for user in users %}
     <tr id="user-{{ user.id }}">
       <td>{{ user.id }}</td>
       <td>{{ user.username }}</td>
+      <td>
+        {% if user.store %}
+        <span class="store-chip" style="background:{{ store_colors.get(user.store,'#999') }};">{{ user.store }}</span>
+        {% else %}
+        <span style="color:#aaa;font-size:.8rem;">—</span>
+        {% endif %}
+        <select onchange="setStore({{ user.id }}, this.value)" style="margin-left:.3rem;font-size:.8rem;padding:.2rem;min-height:32px;border-radius:4px;">
+          <option value="">—</option>
+          {% for s in stores %}
+          <option value="{{ s }}" {% if user.store == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </td>
       <td><span class="badge badge-{{ user.role }}">{{ user.role }}</span></td>
       <td><span class="badge badge-{{ 'active' if user.is_active else 'inactive' }}" id="status-{{ user.id }}">{{ '啟用' if user.is_active else '停用' }}</span></td>
       <td>{{ user.created_at | fmt_date }}</td>
@@ -73,13 +126,16 @@ th { background: #f8f9fa; font-weight: 700; }
 <div class="card" style="margin-top:1rem;">
   <h3>最近筆記（前20篇）</h3>
   <table>
-    <thead><tr><th>ID</th><th>使用者</th><th>標題</th><th>更新時間</th></tr></thead>
+    {% set slabels = {'pending':'待處理','in_progress':'處理中','tracking':'持續追蹤','resolved':'已解決'} %}
+    <thead><tr><th>ID</th><th>使用者</th><th>店別</th><th>標題</th><th>狀態</th><th>更新時間</th></tr></thead>
     <tbody>
     {% for note in notes %}
     <tr>
       <td>{{ note.id }}</td>
       <td>{{ note.author.username }}</td>
+      <td>{{ note.store or '—' }}</td>
       <td><a href="/notes/{{ note.id }}">{{ note.title or '（未命名）' }}</a></td>
+      <td><span class="status-badge status-{{ note.status or 'pending' }}">{{ slabels.get(note.status or 'pending', note.status) }}</span></td>
       <td>{{ note.updated_at | fmt_datetime }}</td>
     </tr>
     {% endfor %}
@@ -133,9 +189,46 @@ function captureEnroll() {
   document.getElementById('enroll-status').textContent = '已拍照，可繼續建立帳號';
 }
 
+async function setStore(id, store) {
+  await fetch(`/admin/users/${id}/set-store`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ store })
+  });
+}
+
+async function generateSummary() {
+  const store = document.getElementById('ai-store-select').value;
+  const days = document.getElementById('ai-days-select').value;
+  const btn = document.getElementById('btn-summary');
+  const statusEl = document.getElementById('summary-status');
+  const outputEl = document.getElementById('ai-summary-output');
+  btn.disabled = true;
+  statusEl.textContent = 'AI 整理中…';
+  outputEl.style.display = 'none';
+  try {
+    const res = await fetch('/admin/ai/store-summary', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ store, days: parseInt(days) })
+    });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      outputEl.textContent = data.summary;
+      outputEl.style.display = 'block';
+      statusEl.textContent = '';
+    } else {
+      statusEl.textContent = data.message || '錯誤';
+    }
+  } catch (e) {
+    statusEl.textContent = '連線錯誤';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function submitCreateUser() {
   const username = document.getElementById('new-username').value.trim();
   const pin = document.getElementById('new-pin').value.trim();
+  const store = document.getElementById('new-store').value;
   const msgEl = document.getElementById('create-msg');
 
   if (!username || !pin) {
@@ -150,7 +243,7 @@ async function submitCreateUser() {
   const res = await fetch('/admin/users/create', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ username, pin, face_image: capturedFaceImage })
+    body: JSON.stringify({ username, pin, store, face_image: capturedFaceImage })
   });
   const data = await res.json();
 
@@ -159,6 +252,7 @@ async function submitCreateUser() {
     msgEl.textContent = `帳號「${data.username}」建立成功（ID: ${data.user_id}）`;
     document.getElementById('new-username').value = '';
     document.getElementById('new-pin').value = '';
+    document.getElementById('new-store').value = '';
     document.getElementById('enroll-snapshot').style.display = 'none';
     capturedFaceImage = null;
     if (enrollCam) { enrollCam.stop(); enrollCam = null; }

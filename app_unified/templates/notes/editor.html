@@ -22,10 +22,26 @@
 .store-btn { padding: .35rem .7rem; border-radius: 16px; font-size: .82rem; font-weight: 600; cursor: pointer; border: 2px solid #ddd; background: #f5f5f5; color: #555; transition: all .15s; min-height: 36px; }
 .store-btn:hover { border-color: #aaa; }
 .store-btn.selected { color: #fff; border-color: transparent; }
-.store-btn.selected[data-store="B"] { background: #3498db; } .store-btn.selected[data-store="C"] { background: #27ae60; }
-.store-btn.selected[data-store="D"] { background: #e67e22; } .store-btn.selected[data-store="E"] { background: #e74c3c; }
-.store-btn.selected[data-store="F"] { background: #9b59b6; } .store-btn.selected[data-store="G"] { background: #1abc9c; }
-.store-btn.selected[data-store="Q"] { background: #c0392b; }
+.store-btn.selected[data-store="B"]  { background: #3498db; }
+.store-btn.selected[data-store="C"]  { background: #27ae60; }
+.store-btn.selected[data-store="D"]  { background: #e67e22; }
+.store-btn.selected[data-store="E"]  { background: #e74c3c; }
+.store-btn.selected[data-store="F"]  { background: #9b59b6; }
+.store-btn.selected[data-store="G"]  { background: #1abc9c; }
+.store-btn.selected[data-store="J"]  { background: #f39c12; }
+.store-btn.selected[data-store="JJ"] { background: #8e44ad; }
+.store-btn.selected[data-store="K"]  { background: #2980b9; }
+.store-btn.selected[data-store="Q"]  { background: #c0392b; }
+.store-btn.selected[data-store="S"]  { background: #16a085; }
+.status-selector { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; margin-bottom: .75rem; }
+.status-selector label { font-size: .85rem; color: #666; margin-right: .25rem; }
+.status-btn { padding: .35rem .7rem; border-radius: 16px; font-size: .82rem; font-weight: 600; cursor: pointer; border: 2px solid #ddd; background: #f5f5f5; color: #555; transition: all .15s; min-height: 36px; }
+.status-btn.selected[data-status="pending"]     { background: #95a5a6; color: #fff; border-color: transparent; }
+.status-btn.selected[data-status="in_progress"] { background: #3498db; color: #fff; border-color: transparent; }
+.status-btn.selected[data-status="tracking"]    { background: #e67e22; color: #fff; border-color: transparent; }
+.status-btn.selected[data-status="resolved"]    { background: #27ae60; color: #fff; border-color: transparent; }
+.store-display { font-size: .85rem; color: #666; margin-bottom: .75rem; }
+.store-display .store-badge-inline { display:inline-block; padding:.1rem .5rem; border-radius:10px; font-size:.82rem; font-weight:700; color:#fff; margin-left:.3rem; }
 </style>
 {% endblock %}
 {% block content %}
@@ -35,11 +51,29 @@
 </div>
 <div class="card editor-wrap">
   <input type="text" id="title-input" placeholder="筆記標題…" value="{{ note.title if note else '' }}">
+  {% if current_user.is_admin() %}
   <div class="store-selector">
     <label>店別：</label>
-    {% for s in ['B','C','D','E','F','G','Q'] %}
+    {% for s in ['B','C','D','E','F','G','J','JJ','K','Q','S'] %}
     <button class="store-btn {% if note and note.store == s %}selected{% endif %}" data-store="{{ s }}" type="button">{{ s }}</button>
     {% endfor %}
+  </div>
+  {% else %}
+  <div class="store-display">
+    店別：
+    {% if current_user.store %}
+    <span class="store-badge-inline" style="background:var(--store-color-{{ current_user.store }}, #999);">{{ current_user.store }} 店</span>
+    {% else %}
+    <span style="color:#aaa;">（未設定店別，請聯繫管理員）</span>
+    {% endif %}
+  </div>
+  {% endif %}
+  <div class="status-selector">
+    <label>狀態：</label>
+    <button class="status-btn {% if not note or note.status == 'pending' %}selected{% endif %}" data-status="pending" type="button">待處理</button>
+    <button class="status-btn {% if note and note.status == 'in_progress' %}selected{% endif %}" data-status="in_progress" type="button">處理中</button>
+    <button class="status-btn {% if note and note.status == 'tracking' %}selected{% endif %}" data-status="tracking" type="button">持續追蹤</button>
+    <button class="status-btn {% if note and note.status == 'resolved' %}selected{% endif %}" data-status="resolved" type="button">已解決</button>
   </div>
   <div class="editor-toolbar">
     {% if note %}
@@ -69,6 +103,7 @@ const contentEl = document.getElementById('content-area');
 const statusEl = document.getElementById('save-status');
 let autoSaveTimer;
 let currentStore = {{ '"' + note.store + '"' if note and note.store else 'null' }};
+let currentStatus = {{ '"' + note.status + '"' if note and note.status else '"pending"' }};
 
 document.querySelectorAll('.store-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -81,6 +116,15 @@ document.querySelectorAll('.store-btn').forEach(btn => {
       btn.classList.add('selected');
       currentStore = s;
     }
+    scheduleAutoSave();
+  });
+});
+
+document.querySelectorAll('.status-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    currentStatus = btn.dataset.status;
     scheduleAutoSave();
   });
 });
@@ -100,13 +144,13 @@ async function saveNote() {
   if (NOTE_ID) {
     await fetch(`/notes/api/${NOTE_ID}`, {
       method: 'PUT', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ title, content, store })
+      body: JSON.stringify({ title, content, store, status: currentStatus })
     });
     statusEl.textContent = '已儲存';
   } else {
     const res = await fetch('/notes/api', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ title, content, store })
+      body: JSON.stringify({ title, content, store, status: currentStatus })
     });
     const data = await res.json();
     if (data.id) {

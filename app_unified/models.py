@@ -4,6 +4,9 @@ import numpy as np
 from flask_login import UserMixin
 from extensions import db
 
+STORES = ["B", "C", "D", "E", "F", "G", "J", "JJ", "K", "Q", "S"]
+STATUS_CHOICES = ["pending", "in_progress", "tracking", "resolved"]
+
 
 def sha256(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
@@ -18,6 +21,7 @@ class User(UserMixin, db.Model):
     role = db.Column(db.Text, nullable=False, default="user")
     face_encoding = db.Column(db.LargeBinary)   # numpy.tobytes() — raw float64 binary
     face_photo_url = db.Column(db.Text)          # Cloudflare R2 URL (replaces face_photo_path)
+    store = db.Column(db.Text, nullable=True)                            # 員工所屬店別；管理者為 NULL
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
 
@@ -56,6 +60,7 @@ class Note(db.Model):
     ai_summary = db.Column(db.Text)
     ai_outline = db.Column(db.Text)
     store = db.Column(db.Text, nullable=True)
+    status = db.Column(db.Text, nullable=False, default="pending")  # 狀態標籤（待處理預設）
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
