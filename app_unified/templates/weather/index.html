@@ -6,7 +6,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="天氣">
+  <meta name="apple-mobile-web-app-title" content="天氣空污預報">
   <meta name="theme-color" content="#1e3c72">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
@@ -37,6 +37,11 @@
     .details span { display: flex; align-items: center; gap: .35rem; }
     .loading { opacity: .6; font-size: 1.1rem; padding: 2rem 0; }
     .weather-error { background: rgba(255,100,100,.2); padding: 1rem 1.5rem; border-radius: 8px; }
+    .aqi-block { margin-top: 1.2rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,.2);
+                 text-align: center; }
+    .aqi-label { font-size: .75rem; opacity: .7; margin-bottom: .3rem; letter-spacing: .05em; }
+    .aqi-level { font-size: 2.5rem; font-weight: 700; line-height: 1; }
+    .aqi-detail { font-size: .85rem; opacity: .75; margin-top: .3rem; }
 
     /* Auth Modal */
     #auth-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
@@ -166,6 +171,22 @@
     fetchAndRender(`/weather/api/weather?city=${encodeURIComponent(city)}`);
   }
 
+  function renderAQI(item) {
+    const aqi = item.main.aqi;
+    const pm25 = item.components?.pm2_5?.toFixed(1) ?? '--';
+    const levels = ['', '好', '中等', '不良', '差', '非常差'];
+    const colors = ['', '#2ecc71', '#f1c40f', '#e74c3c', '#e74c3c', '#e74c3c'];
+    const label = levels[aqi] || '--';
+    const color = colors[aqi] || '#fff';
+    const block = document.createElement('div');
+    block.className = 'aqi-block';
+    block.innerHTML = `
+      <div class="aqi-label">🌫️ 空氣品質</div>
+      <div class="aqi-level" style="color:${color}">${label}</div>
+      <div class="aqi-detail">PM2.5 ${pm25} μg/m³</div>`;
+    card.appendChild(block);
+  }
+
   function loadWeatherByCoords(lat, lon) {
     const weatherPromise = fetch(`/weather/api/weather?lat=${lat}&lon=${lon}`)
       .then(r => r.json());
@@ -177,10 +198,15 @@
       .then(geo => geo.address?.city || geo.address?.county || geo.address?.state || null)
       .catch(() => null);
 
-    Promise.all([weatherPromise, namePromise])
-      .then(([data, chineseName]) => {
+    const aqiPromise = fetch(`/weather/api/air_quality?lat=${lat}&lon=${lon}`)
+      .then(r => r.json())
+      .catch(() => null);
+
+    Promise.all([weatherPromise, namePromise, aqiPromise])
+      .then(([data, chineseName, aqiData]) => {
         if (chineseName) data.name = chineseName;
         renderWeatherCard(data);
+        if (aqiData?.list?.[0]) renderAQI(aqiData.list[0]);
       })
       .catch(() => {
         card.innerHTML = `<div class="weather-error">無法載入天氣資料</div>`;
