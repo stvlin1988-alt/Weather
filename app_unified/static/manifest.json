@@ -1,6 +1,6 @@
 {
-  "name": "天氣空污預報",
-  "short_name": "天氣空污預報",
+  "name": "空污偵測",
+  "short_name": "空污偵測",
   "description": "天氣查詢",
   "start_url": "/weather/",
   "scope": "/",
