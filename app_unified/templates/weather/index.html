@@ -125,34 +125,36 @@
     Haze: '🌁', Dust: '💨', Sand: '💨', Ash: '🌋', Tornado: '🌪️',
   };
 
-  function loadWeather(city) {
+  function renderWeatherCard(data) {
+    if (data.error) {
+      card.innerHTML = `<div class="weather-error">${data.error}</div>`;
+      return;
+    }
+    locText.textContent = data.name || locText.textContent;
+    const icon = weatherIcons[data.weather?.[0]?.main] || '🌐';
+    const humidity = data.main?.humidity ?? '--';
+    const wind = data.wind?.speed ?? '--';
+    const feels = data.main?.feels_like != null ? Math.round(data.main.feels_like) : '--';
+    const visibility = data.visibility != null ? (data.visibility / 1000).toFixed(1) : '--';
+    card.innerHTML = `
+      <div class="city-name">📍 ${data.name}</div>
+      <div class="weather-icon">${icon}</div>
+      <div class="temp">${Math.round(data.main?.temp ?? 0)}°C</div>
+      <div class="desc">${data.weather?.[0]?.description || ''}</div>
+      <div class="details">
+        <span>💧 濕度 ${humidity}%</span>
+        <span>💨 風速 ${wind} m/s</span>
+        <span>🌡️ 體感 ${feels}°C</span>
+        <span>👁️ 能見度 ${visibility} km</span>
+      </div>`;
+  }
+
+  function fetchAndRender(url) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
-    fetch(`/weather/api/weather?city=${encodeURIComponent(city)}`, { signal: controller.signal })
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    fetch(url, { signal: controller.signal })
       .then(r => r.json())
-      .then(data => {
-        clearTimeout(timeout);
-        if (data.error) {
-          card.innerHTML = `<div class="weather-error">${data.error}</div>`;
-          return;
-        }
-        const icon = weatherIcons[data.weather?.[0]?.main] || '🌐';
-        const humidity = data.main?.humidity ?? '--';
-        const wind = data.wind?.speed ?? '--';
-        const feels = data.main?.feels_like != null ? Math.round(data.main.feels_like) : '--';
-        const visibility = data.visibility != null ? (data.visibility / 1000).toFixed(1) : '--';
-        card.innerHTML = `
-          <div class="city-name">📍 ${data.name}</div>
-          <div class="weather-icon">${icon}</div>
-          <div class="temp">${Math.round(data.main?.temp ?? 0)}°C</div>
-          <div class="desc">${data.weather?.[0]?.description || ''}</div>
-          <div class="details">
-            <span>💧 濕度 ${humidity}%</span>
-            <span>💨 風速 ${wind} m/s</span>
-            <span>🌡️ 體感 ${feels}°C</span>
-            <span>👁️ 能見度 ${visibility} km</span>
-          </div>`;
-      })
+      .then(data => { clearTimeout(timeout); renderWeatherCard(data); })
       .catch(err => {
         clearTimeout(timeout);
         const msg = err.name === 'AbortError' ? '載入逾時，請重新整理' : '無法載入天氣資料';
@@ -160,19 +162,36 @@
       });
   }
 
-  // IP 定位取城市，不需瀏覽器授權
+  function loadWeather(city) {
+    fetchAndRender(`/weather/api/weather?city=${encodeURIComponent(city)}`);
+  }
+
+  function loadWeatherByCoords(lat, lon) {
+    fetchAndRender(`/weather/api/weather?lat=${lat}&lon=${lon}`);
+  }
+
+  function fallbackToIP() {
+    fetch('https://ip-api.com/json?fields=city,status', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(geo => {
+        const city = (geo.status === 'success' && geo.city) ? geo.city : 'Taipei';
+        locText.textContent = city;
+        loadWeather(city);
+      })
+      .catch(() => { locText.textContent = '台北市'; loadWeather('Taipei'); });
+  }
+
+  // GPS 優先 → IP fallback → 台北 fallback
   locText.textContent = '正在取得位置…';
-  fetch('https://ip-api.com/json?fields=city,status', { cache: 'no-store' })
-    .then(r => r.json())
-    .then(geo => {
-      const city = (geo.status === 'success' && geo.city) ? geo.city : 'Taipei';
-      locText.textContent = city;
-      loadWeather(city);
-    })
-    .catch(() => {
-      locText.textContent = '台北市';
-      loadWeather('Taipei');
-    });
+  if ('geolocation' in navigator) {
+    navigator.geolocation.getCurrentPosition(
+      pos => loadWeatherByCoords(pos.coords.latitude, pos.coords.longitude),
+      ()  => fallbackToIP(),
+      { timeout: 8000, maximumAge: 300000 }
+    );
+  } else {
+    fallbackToIP();
+  }
 })();
 
 // Modal auth

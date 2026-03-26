@@ -18,9 +18,17 @@ def index():
 
 @weather_bp.route("/api/weather")
 def api_weather():
-    city = request.args.get("city", "Taipei")
+    lat = request.args.get("lat")
+    lon = request.args.get("lon")
     api_key = current_app.config.get("OPENWEATHERMAP_API_KEY", "")
-    city_key = city.lower()
+
+    if lat and lon:
+        city_key = f"geo_{round(float(lat), 2)}_{round(float(lon), 2)}"
+        ow_params = {"lat": lat, "lon": lon, "appid": api_key, "units": "metric", "lang": "zh_tw"}
+    else:
+        city = request.args.get("city", "Taipei")
+        city_key = city.lower()
+        ow_params = {"q": city, "appid": api_key, "units": "metric", "lang": "zh_tw"}
 
     # Check DB cache (shared across multiple workers)
     cached = WeatherCache.query.filter_by(city_key=city_key).first()
@@ -35,7 +43,7 @@ def api_weather():
     try:
         resp = requests.get(
             "https://api.openweathermap.org/data/2.5/weather",
-            params={"q": city, "appid": api_key, "units": "metric", "lang": "zh_tw"},
+            params=ow_params,
             timeout=5,
         )
         data = resp.json()
