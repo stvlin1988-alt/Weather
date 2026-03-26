@@ -167,7 +167,24 @@
   }
 
   function loadWeatherByCoords(lat, lon) {
-    fetchAndRender(`/weather/api/weather?lat=${lat}&lon=${lon}`);
+    const weatherPromise = fetch(`/weather/api/weather?lat=${lat}&lon=${lon}`)
+      .then(r => r.json());
+
+    const namePromise = fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=zh-TW`
+    )
+      .then(r => r.json())
+      .then(geo => geo.address?.city || geo.address?.county || geo.address?.state || null)
+      .catch(() => null);
+
+    Promise.all([weatherPromise, namePromise])
+      .then(([data, chineseName]) => {
+        if (chineseName) data.name = chineseName;
+        renderWeatherCard(data);
+      })
+      .catch(() => {
+        card.innerHTML = `<div class="weather-error">無法載入天氣資料</div>`;
+      });
   }
 
   function fallbackToIP() {
