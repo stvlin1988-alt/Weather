@@ -1,5 +1,5 @@
 # ── Stage 1: Build ──────────────────────────────────────────
-# Compile dlib once; runtime stage copies result directly (no recompilation)
+# Only compile dlib here — everything else installs normally in runtime
 FROM python:3.11-bullseye AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -7,16 +7,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libopenblas-dev liblapack-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install build tools via pip (ensures cmake is in PATH for dlib)
 RUN pip install --no-cache-dir setuptools wheel cmake
 
-# Inline CC/CXX/DLIB_NO_GUI_SUPPORT in the RUN command
-# — ENV alone is not always inherited by pip subprocesses
+# Compile dlib only (inline CC/CXX/DLIB_NO_GUI_SUPPORT for subprocess reliability)
 RUN CC=gcc CXX=g++ DLIB_NO_GUI_SUPPORT=1 \
-    pip install --no-cache-dir dlib==19.24.2 face_recognition numpy Pillow
+    pip install --no-cache-dir dlib==19.24.2
 
 # ── Stage 2: Runtime ─────────────────────────────────────────
-# No build tools needed — packages are already compiled above
 FROM python:3.11-slim
 
 LABEL "language"="python"
@@ -28,11 +25,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy pre-compiled packages from builder
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+# Copy only pre-compiled dlib from builder (avoids metadata conflicts)
+COPY --from=builder /usr/local/lib/python3.11/site-packages/dlib \
+                    /usr/local/lib/python3.11/site-packages/dlib
+COPY --from=builder /usr/local/lib/python3.11/site-packages/dlib-19.24.2.dist-info \
+                    /usr/local/lib/python3.11/site-packages/dlib-19.24.2.dist-info
 
-# Install remaining deps (dlib already present from COPY above — pip skips it)
+# Install all other packages normally — face_recognition_models gets proper metadata
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
