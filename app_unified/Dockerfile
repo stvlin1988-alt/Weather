@@ -1,21 +1,22 @@
 # ── Stage 1: Build ──────────────────────────────────────────
-# Compile dlib once here; runtime stage copies the result directly
+# Compile dlib once; runtime stage copies result directly (no recompilation)
 FROM python:3.11-bullseye AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential gcc g++ make git \
+    build-essential gcc g++ make cmake git \
     libopenblas-dev liblapack-dev \
     && rm -rf /var/lib/apt/lists/*
 
-ENV CC=/usr/bin/gcc
-ENV CXX=/usr/bin/g++
+# Install build tools via pip (ensures cmake is in PATH for dlib)
+RUN pip install --no-cache-dir setuptools wheel cmake
 
-# Use pip cmake (pre-built binary) — avoids system cmake version issues
-RUN pip install --no-cache-dir cmake
-RUN pip install --no-cache-dir dlib==19.24.2 face_recognition numpy Pillow
+# Inline CC/CXX/DLIB_NO_GUI_SUPPORT in the RUN command
+# — ENV alone is not always inherited by pip subprocesses
+RUN CC=gcc CXX=g++ DLIB_NO_GUI_SUPPORT=1 \
+    pip install --no-cache-dir dlib==19.24.2 face_recognition numpy Pillow
 
 # ── Stage 2: Runtime ─────────────────────────────────────────
-# No build tools needed — dlib is already compiled
+# No build tools needed — packages are already compiled above
 FROM python:3.11-slim
 
 LABEL "language"="python"
@@ -27,11 +28,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy pre-compiled packages from builder (no recompilation)
+# Copy pre-compiled packages from builder
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Install remaining deps (dlib already satisfied by COPY above)
+# Install remaining deps (dlib already present from COPY above — pip skips it)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
