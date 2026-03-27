@@ -17,7 +17,7 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 def call_llm(prompt: str, max_tokens: int = 2048) -> str:
     """呼叫 Ollama（優先）或 Anthropic（fallback）。"""
-    ollama_url = current_app.config.get("OLLAMA_BASE_URL", "")
+    ollama_url = current_app.config.get("OLLAMA_HOST", "")
     if ollama_url:
         import requests as _req
         resp = _req.post(
