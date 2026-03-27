@@ -4,12 +4,21 @@ import numpy as np
 from flask_login import UserMixin
 from extensions import db
 
-STORES = ["B", "C", "D", "E", "F", "G", "J", "JJ", "K", "Q", "S"]
-STATUS_CHOICES = ["pending", "in_progress", "tracking", "resolved"]
+STATUS_CHOICES = ["pending", "in_progress", "resolved"]
+PRIORITY_CHOICES = ["high", "medium", "low"]
 
 
 def sha256(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
+
+
+class Store(db.Model):
+    __tablename__ = "stores"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.Text, unique=True, nullable=False)
+    login_enabled = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 
 class User(UserMixin, db.Model):
@@ -19,13 +28,13 @@ class User(UserMixin, db.Model):
     username = db.Column(db.Text, unique=True, nullable=False)
     password_hash = db.Column(db.Text, nullable=False)
     role = db.Column(db.Text, nullable=False, default="user")
-    face_encoding = db.Column(db.LargeBinary)   # numpy.tobytes() — raw float64 binary
-    face_photo_url = db.Column(db.Text)          # Cloudflare R2 URL (replaces face_photo_path)
-    store = db.Column(db.Text, nullable=True)                            # 員工所屬店別；管理者為 NULL
+    face_encoding = db.Column(db.LargeBinary)
+    face_photo_url = db.Column(db.Text)
+    store = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
 
-    notes = db.relationship("Note", backref="author", lazy=True)
+    notes = db.relationship("Note", backref="author", lazy=True, foreign_keys="Note.user_id")
 
     def set_password(self, pin: str):
         self.password_hash = sha256(pin)
@@ -34,7 +43,6 @@ class User(UserMixin, db.Model):
         return self.password_hash == sha256(pin)
 
     def set_face_encoding(self, encoding: np.ndarray):
-        """Store face encoding as raw bytes (safer than pickle)."""
         self.face_encoding = encoding.astype(np.float64).tobytes()
 
     def get_face_encoding(self) -> np.ndarray | None:
@@ -60,9 +68,29 @@ class Note(db.Model):
     ai_summary = db.Column(db.Text)
     ai_outline = db.Column(db.Text)
     store = db.Column(db.Text, nullable=True)
-    status = db.Column(db.Text, nullable=False, default="pending")  # 狀態標籤（待處理預設）
+    status = db.Column(db.Text, nullable=False, default="pending")
+    priority = db.Column(db.Text, nullable=False, default="medium")
+    updated_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    logs = db.relationship("NoteLog", backref="note", lazy=True,
+                           foreign_keys="NoteLog.note_id",
+                           primaryjoin="Note.id == NoteLog.note_id")
+
+
+class NoteLog(db.Model):
+    __tablename__ = "note_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    note_id = db.Column(db.Integer, db.ForeignKey("notes.id", ondelete="SET NULL"), nullable=True)
+    note_title = db.Column(db.Text, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    action = db.Column(db.Text, nullable=False)   # 'edit' | 'delete'
+    diff = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    operator = db.relationship("User", foreign_keys=[user_id])
 
 
 class LoginToken(db.Model):
@@ -80,5 +108,5 @@ class WeatherCache(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     city_key = db.Column(db.Text, unique=True, nullable=False)
-    data_json = db.Column(db.Text, nullable=False)   # JSON string
+    data_json = db.Column(db.Text, nullable=False)
     cached_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)

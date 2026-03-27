@@ -124,7 +124,7 @@ th { background: #f8f9fa; font-weight: 700; }
 <div class="card" style="margin-top:1rem;">
   <h3>最近筆記（前20篇）</h3>
   <table>
-    {% set slabels = {'pending':'待處理','in_progress':'處理中','tracking':'持續追蹤','resolved':'已解決'} %}
+    {% set slabels = {'pending':'待處理','in_progress':'處理中','resolved':'已解決'} %}
     <thead><tr><th>ID</th><th>使用者</th><th>店別</th><th>標題</th><th>狀態</th><th>更新時間</th></tr></thead>
     <tbody>
     {% for note in notes %}
@@ -138,6 +138,26 @@ th { background: #f8f9fa; font-weight: 700; }
     </tr>
     {% endfor %}
     </tbody>
+  </table>
+</div>
+<div class="card" style="margin-top:1rem;">
+  <h3>店家管理</h3>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-top:.75rem;">
+    <input id="new-store-name" type="text" class="form-control" placeholder="店名（如 A）" style="max-width:120px;font-size:.9rem;">
+    <button class="btn btn-primary" onclick="addStore()">新增店家</button>
+  </div>
+  <table style="margin-top:.75rem;">
+    <thead><tr><th>店名</th><th>登入狀態</th><th>操作</th></tr></thead>
+    <tbody id="stores-tbody"></tbody>
+  </table>
+</div>
+
+<div class="card" style="margin-top:1rem;">
+  <h3>操作 Log</h3>
+  <button class="btn btn-secondary" onclick="loadLogs()" style="margin-top:.5rem;">載入記錄</button>
+  <table id="logs-table" style="margin-top:.75rem;display:none;">
+    <thead><tr><th>時間</th><th>操作員</th><th>動作</th><th>筆記</th><th>變更</th></tr></thead>
+    <tbody id="logs-tbody"></tbody>
   </table>
 </div>
 {% endblock %}
@@ -263,5 +283,70 @@ async function submitCreateUser() {
     msgEl.textContent = data.message || '建立失敗';
   }
 }
+
+// 店家管理
+async function loadStores() {
+  const res = await fetch('/admin/stores');
+  const stores = await res.json();
+  const tbody = document.getElementById('stores-tbody');
+  tbody.innerHTML = stores.map(s => `
+    <tr>
+      <td><strong>${s.name}</strong></td>
+      <td><span class="badge badge-${s.login_enabled ? 'active' : 'inactive'}" id="store-login-${s.name}">${s.login_enabled ? '開啟' : '關閉'}</span></td>
+      <td>
+        <button class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .7rem;" onclick="toggleStoreLogin('${s.name}')">切換登入</button>
+        <button class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .7rem;margin-left:.3rem;color:#dc3545;" onclick="deleteStore('${s.name}')">刪除</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function addStore() {
+  const name = document.getElementById('new-store-name').value.trim();
+  if (!name) return;
+  const res = await fetch('/admin/stores', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ name })
+  });
+  const data = await res.json();
+  if (data.status === 'ok') { document.getElementById('new-store-name').value = ''; loadStores(); }
+  else alert(data.message);
+}
+
+async function toggleStoreLogin(name) {
+  const res = await fetch(`/admin/stores/${name}/toggle-login`, { method: 'POST' });
+  const data = await res.json();
+  if (data.status === 'ok') {
+    const el = document.getElementById(`store-login-${name}`);
+    el.textContent = data.login_enabled ? '開啟' : '關閉';
+    el.className = `badge badge-${data.login_enabled ? 'active' : 'inactive'}`;
+  }
+}
+
+async function deleteStore(name) {
+  if (!confirm(`確定刪除 ${name} 店？`)) return;
+  await fetch(`/admin/stores/${name}`, { method: 'DELETE' });
+  loadStores();
+}
+
+// Log
+async function loadLogs() {
+  const res = await fetch('/admin/logs');
+  const logs = await res.json();
+  const tbody = document.getElementById('logs-tbody');
+  document.getElementById('logs-table').style.display = 'table';
+  tbody.innerHTML = logs.map(l => `
+    <tr>
+      <td style="white-space:nowrap;font-size:.8rem;">${l.created_at}</td>
+      <td>${l.operator}</td>
+      <td><span class="status-badge status-${l.action === 'delete' ? 'resolved' : 'in_progress'}">${l.action === 'delete' ? '刪除' : '編輯'}</span></td>
+      <td>${l.note_title}</td>
+      <td style="font-size:.8rem;color:#666;">${l.diff || '—'}</td>
+    </tr>
+  `).join('');
+}
+
+// 頁面載入時自動載入店家列表
+loadStores();
 </script>
 {% endblock %}

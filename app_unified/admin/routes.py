@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from flask import Blueprint, render_template, jsonify, request, abort, current_app
 from flask_login import login_required, current_user
 from extensions import db
-from models import User, Note, STORES, STATUS_CHOICES
+from models import User, Note, Store, NoteLog, STATUS_CHOICES
 
 try:
     import face_recognition
@@ -57,8 +57,9 @@ def dashboard():
     require_admin()
     users = User.query.order_by(User.created_at.desc()).all()
     notes = Note.query.order_by(Note.updated_at.desc()).limit(20).all()
+    stores = [s.name for s in Store.query.order_by(Store.name).all()]
     return render_template("admin/dashboard.html", users=users, notes=notes,
-                           stores=STORES, status_choices=STATUS_CHOICES)
+                           stores=stores, status_choices=STATUS_CHOICES)
 
 
 @admin_bp.route("/users/create", methods=["POST"])
@@ -77,7 +78,8 @@ def create_user():
     if User.query.filter_by(username=username).first():
         return jsonify({"status": "error", "message": "帳號已存在"}), 409
 
-    user = User(username=username, store=store if store in STORES else None)
+    valid_stores = [s.name for s in Store.query.all()]
+    user = User(username=username, store=store if store in valid_stores else None)
     user.set_password(pin)
 
     if face_image and FACE_RECOGNITION_AVAILABLE:
@@ -140,7 +142,8 @@ def set_store(user_id):
     user = User.query.get_or_404(user_id)
     data = request.get_json(silent=True) or {}
     store = data.get("store", "")
-    user.store = store if store in STORES else None
+    valid_stores = [s.name for s in Store.query.all()]
+    user.store = store if store in valid_stores else None
     db.session.commit()
     return jsonify({"status": "ok", "store": user.store})
 
@@ -154,8 +157,9 @@ def store_summary():
     days = int(data.get("days", 7))
     since = datetime.utcnow() - timedelta(days=days)
 
+    valid_stores = [s.name for s in Store.query.all()]
     query = Note.query.filter(Note.updated_at >= since)
-    if store != "all" and store in STORES:
+    if store != "all" and store in valid_stores:
         query = query.filter_by(store=store)
     notes = query.order_by(Note.store, Note.updated_at.desc()).all()
 
@@ -164,7 +168,7 @@ def store_summary():
 
     STATUS_LABELS = {
         "pending": "待處理", "in_progress": "處理中",
-        "tracking": "持續追蹤", "resolved": "已解決",
+        "resolved": "已解決",
     }
     lines = []
     for n in notes:
@@ -191,3 +195,71 @@ def store_summary():
         return jsonify({"status": "error", "message": str(e)}), 503
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ── 店家管理 ──────────────────────────────────────────────
+
+@admin_bp.route("/stores", methods=["GET"])
+@login_required
+def list_stores():
+    require_admin()
+    stores = Store.query.order_by(Store.name).all()
+    return jsonify([{"name": s.name, "login_enabled": s.login_enabled} for s in stores])
+
+
+@admin_bp.route("/stores", methods=["POST"])
+@login_required
+def create_store():
+    require_admin()
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip().upper()
+    if not name:
+        return jsonify({"status": "error", "message": "請填寫店名"}), 400
+    if Store.query.filter_by(name=name).first():
+        return jsonify({"status": "error", "message": "店家已存在"}), 409
+    db.session.add(Store(name=name))
+    db.session.commit()
+    return jsonify({"status": "ok", "name": name}), 201
+
+
+@admin_bp.route("/stores/<name>", methods=["DELETE"])
+@login_required
+def delete_store(name):
+    require_admin()
+    store = Store.query.filter_by(name=name).first_or_404()
+    db.session.delete(store)
+    db.session.commit()
+    return jsonify({"status": "ok"})
+
+
+@admin_bp.route("/stores/<name>/toggle-login", methods=["POST"])
+@login_required
+def toggle_store_login(name):
+    require_admin()
+    store = Store.query.filter_by(name=name).first_or_404()
+    store.login_enabled = not store.login_enabled
+    db.session.commit()
+    return jsonify({"status": "ok", "login_enabled": store.login_enabled})
+
+
+# ── 操作 Log ──────────────────────────────────────────────
+
+@admin_bp.route("/logs", methods=["GET"])
+@login_required
+def get_logs():
+    require_admin()
+    # 自動清理 30 天前的記錄
+    cutoff = datetime.utcnow() - timedelta(days=30)
+    NoteLog.query.filter(NoteLog.created_at < cutoff).delete()
+    db.session.commit()
+
+    logs = NoteLog.query.order_by(NoteLog.created_at.desc()).limit(200).all()
+    return jsonify([{
+        "id": l.id,
+        "note_id": l.note_id,
+        "note_title": l.note_title,
+        "operator": l.operator.username if l.operator else "?",
+        "action": l.action,
+        "diff": l.diff,
+        "created_at": l.created_at.strftime("%Y/%m/%d %H:%M") if l.created_at else "",
+    } for l in logs])

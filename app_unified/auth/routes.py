@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 from flask import Blueprint, request, jsonify, session, redirect, url_for, render_template, flash, current_app, abort
 from flask_login import login_user, logout_user, login_required, current_user
 from extensions import db, limiter
-from models import User
+from models import User, Store
 
 try:
     import face_recognition
@@ -102,6 +102,10 @@ def verify():
             break
 
     if matched:
+        if not matched.is_admin() and matched.store:
+            s = Store.query.filter_by(name=matched.store).first()
+            if s and not s.login_enabled:
+                return jsonify({"status": "error", "message": "錯誤2"})
         login_user(matched)
         session.permanent = True
         logger.warning("verify: PIN matched, face matched user=%s", matched.username)

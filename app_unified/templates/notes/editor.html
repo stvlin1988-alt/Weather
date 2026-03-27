@@ -38,8 +38,14 @@
 .status-btn { padding: .35rem .7rem; border-radius: 16px; font-size: .82rem; font-weight: 600; cursor: pointer; border: 2px solid #ddd; background: #f5f5f5; color: #555; transition: all .15s; min-height: 36px; }
 .status-btn.selected[data-status="pending"]     { background: #95a5a6; color: #fff; border-color: transparent; }
 .status-btn.selected[data-status="in_progress"] { background: #3498db; color: #fff; border-color: transparent; }
-.status-btn.selected[data-status="tracking"]    { background: #e67e22; color: #fff; border-color: transparent; }
 .status-btn.selected[data-status="resolved"]    { background: #27ae60; color: #fff; border-color: transparent; }
+.priority-selector { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; margin-bottom: .75rem; }
+.priority-selector label { font-size: .85rem; color: #666; margin-right: .25rem; }
+.priority-btn { padding: .35rem .7rem; border-radius: 16px; font-size: .82rem; font-weight: 600; cursor: pointer; border: 2px solid #ddd; background: #f5f5f5; color: #555; transition: all .15s; min-height: 36px; }
+.priority-btn.selected[data-priority="high"]   { background: #e74c3c; color: #fff; border-color: transparent; }
+.priority-btn.selected[data-priority="medium"] { background: #e67e22; color: #fff; border-color: transparent; }
+.priority-btn.selected[data-priority="low"]    { background: #95a5a6; color: #fff; border-color: transparent; }
+.updated-by-info { font-size: .78rem; color: #aaa; margin-bottom: .5rem; }
 .store-display { font-size: .85rem; color: #666; margin-bottom: .75rem; }
 .store-display .store-badge-inline { display:inline-block; padding:.1rem .5rem; border-radius:10px; font-size:.82rem; font-weight:700; color:#fff; margin-left:.3rem; }
 </style>
@@ -51,6 +57,9 @@
 </div>
 <div class="card editor-wrap">
   <input type="text" id="title-input" placeholder="筆記標題…" value="{{ note.title if note else '' }}">
+  {% if note and note.updated_by %}
+  <div class="updated-by-info" id="updated-by-display">由 <strong id="updated-by-name">載入中…</strong> 修改</div>
+  {% endif %}
   {% if current_user.is_admin() %}
   <div class="store-selector">
     <label>店別：</label>
@@ -72,8 +81,14 @@
     <label>狀態：</label>
     <button class="status-btn {% if not note or note.status == 'pending' %}selected{% endif %}" data-status="pending" type="button">待處理</button>
     <button class="status-btn {% if note and note.status == 'in_progress' %}selected{% endif %}" data-status="in_progress" type="button">處理中</button>
-    <button class="status-btn {% if note and note.status == 'tracking' %}selected{% endif %}" data-status="tracking" type="button">持續追蹤</button>
     <button class="status-btn {% if note and note.status == 'resolved' %}selected{% endif %}" data-status="resolved" type="button">已解決</button>
+  </div>
+  {% set cur_priority = note.priority if note and note.priority else 'medium' %}
+  <div class="priority-selector">
+    <label>優先度：</label>
+    <button class="priority-btn {% if cur_priority == 'high' %}selected{% endif %}" data-priority="high" type="button">高</button>
+    <button class="priority-btn {% if cur_priority == 'medium' %}selected{% endif %}" data-priority="medium" type="button">中</button>
+    <button class="priority-btn {% if cur_priority == 'low' %}selected{% endif %}" data-priority="low" type="button">低</button>
   </div>
   <div class="editor-toolbar">
     {% if note %}
@@ -82,9 +97,9 @@
   </div>
   <textarea id="content-area" placeholder="開始輸入筆記內容…">{{ note.content if note else '' }}</textarea>
 
-  {% if note and current_user.is_admin() %}
+  {% if note %}
   <div class="ai-panel">
-    <strong>AI 工具（管理者）</strong>
+    <strong>AI 工具</strong>
     <div style="display:flex;gap:.5rem;margin-top:.5rem;flex-wrap:wrap;">
       <button class="btn btn-secondary" id="btn-summarize">生成摘要</button>
       <button class="btn btn-secondary" id="btn-outline">生成大綱</button>
@@ -104,6 +119,15 @@ const statusEl = document.getElementById('save-status');
 let autoSaveTimer;
 let currentStore = {{ '"' + note.store + '"' if note and note.store else 'null' }};
 let currentStatus = {{ '"' + note.status + '"' if note and note.status else '"pending"' }};
+let currentPriority = {{ '"' + (note.priority if note and note.priority else 'medium') + '"' }};
+
+// 載入 updated_by 資訊
+{% if note and note.updated_by %}
+fetch(`/notes/api/${NOTE_ID}`).then(r => r.json()).then(data => {
+  const el = document.getElementById('updated-by-name');
+  if (el && data.updated_by) el.textContent = data.updated_by;
+}).catch(() => {});
+{% endif %}
 
 document.querySelectorAll('.store-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -129,6 +153,15 @@ document.querySelectorAll('.status-btn').forEach(btn => {
   });
 });
 
+document.querySelectorAll('.priority-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.priority-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    currentPriority = btn.dataset.priority;
+    scheduleAutoSave();
+  });
+});
+
 function scheduleAutoSave() {
   clearTimeout(autoSaveTimer);
   autoSaveTimer = setTimeout(saveNote, 2000);
@@ -144,13 +177,13 @@ async function saveNote() {
   if (NOTE_ID) {
     await fetch(`/notes/api/${NOTE_ID}`, {
       method: 'PUT', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ title, content, store, status: currentStatus })
+      body: JSON.stringify({ title, content, store, status: currentStatus, priority: currentPriority })
     });
     statusEl.textContent = '已儲存';
   } else {
     const res = await fetch('/notes/api', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ title, content, store, status: currentStatus })
+      body: JSON.stringify({ title, content, store, status: currentStatus, priority: currentPriority })
     });
     const data = await res.json();
     if (data.id) {

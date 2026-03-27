@@ -1,11 +1,26 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, render_template
 from flask_login import login_required, current_user
 from extensions import db
-from models import Note, STORES, STATUS_CHOICES
+from models import Note, Store, NoteLog, STATUS_CHOICES, PRIORITY_CHOICES
 from admin.routes import call_llm
 
 notes_bp = Blueprint("notes", __name__, url_prefix="/notes")
+
+RANGE_DAYS = {"today": 0, "3d": 3, "5d": 5, "7d": 7}
+
+
+def _get_stores():
+    return [s.name for s in Store.query.order_by(Store.name).all()]
+
+
+def _date_filter(query, range_param):
+    days = RANGE_DAYS.get(range_param, 3)
+    if days == 0:
+        since = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    else:
+        since = datetime.utcnow() - timedelta(days=days)
+    return query.filter(Note.updated_at >= since)
 
 
 @notes_bp.route("/")
@@ -13,21 +28,33 @@ notes_bp = Blueprint("notes", __name__, url_prefix="/notes")
 def index():
     store_filter = request.args.get("store", "")
     status_filter = request.args.get("status", "")
-    query = Note.query.filter_by(user_id=current_user.id)
-    if store_filter in STORES:
-        query = query.filter_by(store=store_filter)
+    range_param = request.args.get("range", "3d")
+    stores = _get_stores()
+
+    if current_user.is_admin():
+        query = Note.query
+        if store_filter in stores:
+            query = query.filter_by(store=store_filter)
+    else:
+        query = Note.query.filter_by(user_id=current_user.id)
+
+    query = _date_filter(query, range_param)
     if status_filter in STATUS_CHOICES:
         query = query.filter_by(status=status_filter)
     notes = query.order_by(Note.updated_at.desc()).all()
-    return render_template("notes/index.html", notes=notes, stores=STORES,
+
+    return render_template("notes/index.html", notes=notes, stores=stores,
                            current_store=store_filter, status_choices=STATUS_CHOICES,
-                           current_status=status_filter)
+                           current_status=status_filter, current_range=range_param,
+                           priority_choices=PRIORITY_CHOICES)
 
 
 @notes_bp.route("/new", methods=["GET"])
 @login_required
 def new_note():
-    return render_template("notes/editor.html", note=None)
+    stores = _get_stores()
+    return render_template("notes/editor.html", note=None, stores=stores,
+                           status_choices=STATUS_CHOICES, priority_choices=PRIORITY_CHOICES)
 
 
 @notes_bp.route("/api", methods=["GET"])
@@ -35,15 +62,26 @@ def new_note():
 def list_notes():
     store_filter = request.args.get("store", "")
     status_filter = request.args.get("status", "")
-    query = Note.query.filter_by(user_id=current_user.id)
-    if store_filter in STORES:
-        query = query.filter_by(store=store_filter)
+    range_param = request.args.get("range", "3d")
+    stores = _get_stores()
+
+    if current_user.is_admin():
+        query = Note.query
+        if store_filter in stores:
+            query = query.filter_by(store=store_filter)
+    else:
+        query = Note.query.filter_by(user_id=current_user.id)
+
+    query = _date_filter(query, range_param)
     if status_filter in STATUS_CHOICES:
         query = query.filter_by(status=status_filter)
     notes = query.order_by(Note.updated_at.desc()).all()
+
     return jsonify([{
         "id": n.id, "title": n.title, "content": n.content,
         "store": n.store, "status": n.status or "pending",
+        "priority": n.priority or "medium",
+        "author": n.author.username if n.author else "",
         "created_at": n.created_at.isoformat() if n.created_at else "",
         "updated_at": n.updated_at.isoformat() if n.updated_at else "",
     } for n in notes])
@@ -53,19 +91,21 @@ def list_notes():
 @login_required
 def create_note():
     data = request.get_json(silent=True) or {}
+    stores = _get_stores()
     now = datetime.utcnow()
-    # Admin可手選店別；員工自動帶入所屬店別
     if current_user.is_admin():
-        store = data.get("store") if data.get("store") in STORES else None
+        store = data.get("store") if data.get("store") in stores else None
     else:
-        store = current_user.store if current_user.store in STORES else None
+        store = current_user.store if current_user.store in stores else None
     status = data.get("status") if data.get("status") in STATUS_CHOICES else "pending"
+    priority = data.get("priority") if data.get("priority") in PRIORITY_CHOICES else "medium"
     note = Note(
         user_id=current_user.id,
         title=data.get("title", "未命名筆記"),
         content=data.get("content", ""),
         store=store,
         status=status,
+        priority=priority,
         created_at=now,
         updated_at=now,
     )
@@ -77,11 +117,21 @@ def create_note():
 @notes_bp.route("/api/<int:note_id>", methods=["GET"])
 @login_required
 def get_note(note_id):
-    note = Note.query.filter_by(id=note_id, user_id=current_user.id).first_or_404()
+    if current_user.is_admin():
+        note = Note.query.get_or_404(note_id)
+    else:
+        note = Note.query.filter_by(id=note_id, user_id=current_user.id).first_or_404()
+    updater = None
+    if note.updated_by:
+        from models import User
+        u = User.query.get(note.updated_by)
+        updater = u.username if u else None
     return jsonify({
         "id": note.id, "title": note.title, "content": note.content,
         "store": note.store, "status": note.status or "pending",
+        "priority": note.priority or "medium",
         "ai_summary": note.ai_summary, "ai_outline": note.ai_outline,
+        "updated_by": updater,
         "created_at": note.created_at.isoformat() if note.created_at else "",
         "updated_at": note.updated_at.isoformat() if note.updated_at else "",
     })
@@ -90,17 +140,47 @@ def get_note(note_id):
 @notes_bp.route("/api/<int:note_id>", methods=["PUT"])
 @login_required
 def update_note(note_id):
-    note = Note.query.filter_by(id=note_id, user_id=current_user.id).first_or_404()
+    if current_user.is_admin():
+        note = Note.query.get_or_404(note_id)
+    else:
+        note = Note.query.filter_by(id=note_id, user_id=current_user.id).first_or_404()
     data = request.get_json(silent=True) or {}
-    if "title" in data:
+    stores = _get_stores()
+
+    diff_parts = []
+    if "title" in data and data["title"] != note.title:
+        diff_parts.append(f"標題: {note.title} → {data['title']}")
         note.title = data["title"]
-    if "content" in data:
+    if "content" in data and data["content"] != note.content:
+        old_len = len(note.content)
+        new_len = len(data["content"])
+        diff_parts.append(f"內容長度: {old_len} → {new_len} 字")
         note.content = data["content"]
     if "store" in data and current_user.is_admin():
-        note.store = data["store"] if data["store"] in STORES else None
+        note.store = data["store"] if data["store"] in stores else None
     if "status" in data and data["status"] in STATUS_CHOICES:
+        if data["status"] != note.status:
+            diff_parts.append(f"狀態: {note.status} → {data['status']}")
         note.status = data["status"]
+    if "priority" in data and data["priority"] in PRIORITY_CHOICES:
+        if data["priority"] != note.priority:
+            diff_parts.append(f"優先度: {note.priority} → {data['priority']}")
+        note.priority = data["priority"]
+
+    note.updated_by = current_user.id
     note.updated_at = datetime.utcnow()
+    db.session.flush()
+
+    if diff_parts:
+        log = NoteLog(
+            note_id=note.id,
+            note_title=note.title,
+            user_id=current_user.id,
+            action="edit",
+            diff="; ".join(diff_parts),
+        )
+        db.session.add(log)
+
     db.session.commit()
     return jsonify({"status": "ok"})
 
@@ -108,7 +188,17 @@ def update_note(note_id):
 @notes_bp.route("/api/<int:note_id>", methods=["DELETE"])
 @login_required
 def delete_note(note_id):
-    note = Note.query.filter_by(id=note_id, user_id=current_user.id).first_or_404()
+    if current_user.is_admin():
+        note = Note.query.get_or_404(note_id)
+    else:
+        note = Note.query.filter_by(id=note_id, user_id=current_user.id).first_or_404()
+    log = NoteLog(
+        note_id=note.id,
+        note_title=note.title,
+        user_id=current_user.id,
+        action="delete",
+    )
+    db.session.add(log)
     db.session.delete(note)
     db.session.commit()
     return jsonify({"status": "ok"})
@@ -117,9 +207,12 @@ def delete_note(note_id):
 @notes_bp.route("/api/<int:note_id>/summarize", methods=["POST"])
 @login_required
 def summarize(note_id):
-    note = Note.query.filter_by(id=note_id, user_id=current_user.id).first_or_404()
-    if not current_user.is_admin():
-        return jsonify({"status": "error", "message": "需要管理者權限"}), 403
+    if current_user.is_admin():
+        note = Note.query.get_or_404(note_id)
+    else:
+        note = Note.query.filter_by(id=note_id, user_id=current_user.id).first_or_404()
+        if note.store != current_user.store:
+            return jsonify({"status": "error", "message": "僅限同店筆記"}), 403
 
     try:
         prompt = f"請用繁體中文為以下筆記提供 3-5 句的摘要：\n\n標題：{note.title}\n\n{note.content}"
@@ -137,9 +230,12 @@ def summarize(note_id):
 @notes_bp.route("/api/<int:note_id>/outline", methods=["POST"])
 @login_required
 def outline(note_id):
-    note = Note.query.filter_by(id=note_id, user_id=current_user.id).first_or_404()
-    if not current_user.is_admin():
-        return jsonify({"status": "error", "message": "需要管理者權限"}), 403
+    if current_user.is_admin():
+        note = Note.query.get_or_404(note_id)
+    else:
+        note = Note.query.filter_by(id=note_id, user_id=current_user.id).first_or_404()
+        if note.store != current_user.store:
+            return jsonify({"status": "error", "message": "僅限同店筆記"}), 403
 
     try:
         prompt = f"請用繁體中文為以下筆記產生條列式大綱（Markdown 格式）：\n\n標題：{note.title}\n\n{note.content}"
@@ -157,5 +253,10 @@ def outline(note_id):
 @notes_bp.route("/<int:note_id>")
 @login_required
 def edit_note(note_id):
-    note = Note.query.filter_by(id=note_id, user_id=current_user.id).first_or_404()
-    return render_template("notes/editor.html", note=note)
+    if current_user.is_admin():
+        note = Note.query.get_or_404(note_id)
+    else:
+        note = Note.query.filter_by(id=note_id, user_id=current_user.id).first_or_404()
+    stores = _get_stores()
+    return render_template("notes/editor.html", note=note, stores=stores,
+                           status_choices=STATUS_CHOICES, priority_choices=PRIORITY_CHOICES)
