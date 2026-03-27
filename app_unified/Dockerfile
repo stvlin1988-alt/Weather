@@ -1,34 +1,26 @@
-FROM python:3.11-slim AS builder
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential cmake git libopenblas-dev liblapack-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /build
-
-# Pre-compile dlib and face_recognition in builder stage
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir dlib face_recognition numpy Pillow
-
-# Stage 2: Runtime image
 FROM python:3.11-slim
 
 LABEL "language"="python"
 LABEL "framework"="flask"
 
+# Install all system dependencies in one stage
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential cmake libgomp1 libopenblas0 liblapack3 \
+    build-essential \
+    cmake \
+    git \
+    libopenblas-dev \
+    liblapack-dev \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy compiled packages from builder
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
-
-# Copy requirements and install remaining deps
+# Copy requirements first
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Install Python dependencies - dlib will compile here with all tools available
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy app source
 COPY . .
