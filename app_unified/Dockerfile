@@ -9,12 +9,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     make \
-    cmake \
+    wget \
+    ca-certificates \
     git \
     libopenblas-dev \
     liblapack-dev \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
+
+# Install CMake 3.28.0 from official GitHub release
+RUN wget -q https://github.com/Kitware/CMake/releases/download/v3.28.0/cmake-3.28.0-linux-x86_64.sh \
+    -O /tmp/cmake-install.sh && \
+    chmod +x /tmp/cmake-install.sh && \
+    /tmp/cmake-install.sh --skip-license --prefix=/usr/local && \
+    rm /tmp/cmake-install.sh
 
 WORKDIR /app
 
