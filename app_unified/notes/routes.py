@@ -1,8 +1,9 @@
 from datetime import datetime
-from flask import Blueprint, request, jsonify, render_template, current_app
+from flask import Blueprint, request, jsonify, render_template
 from flask_login import login_required, current_user
 from extensions import db
 from models import Note, STORES, STATUS_CHOICES
+from admin.routes import call_llm
 
 notes_bp = Blueprint("notes", __name__, url_prefix="/notes")
 
@@ -120,26 +121,15 @@ def summarize(note_id):
     if not current_user.is_admin():
         return jsonify({"status": "error", "message": "需要管理者權限"}), 403
 
-    api_key = current_app.config.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return jsonify({"status": "error", "message": "未設定 Anthropic API Key"}), 503
-
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        msg = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=512,
-            messages=[{
-                "role": "user",
-                "content": f"請用繁體中文為以下筆記提供 3-5 句的摘要：\n\n標題：{note.title}\n\n{note.content}"
-            }]
-        )
-        summary = msg.content[0].text
+        prompt = f"請用繁體中文為以下筆記提供 3-5 句的摘要：\n\n標題：{note.title}\n\n{note.content}"
+        summary = call_llm(prompt, max_tokens=512)
         note.ai_summary = summary
         note.updated_at = datetime.utcnow()
         db.session.commit()
         return jsonify({"status": "ok", "summary": summary})
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 503
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -151,26 +141,15 @@ def outline(note_id):
     if not current_user.is_admin():
         return jsonify({"status": "error", "message": "需要管理者權限"}), 403
 
-    api_key = current_app.config.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return jsonify({"status": "error", "message": "未設定 Anthropic API Key"}), 503
-
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        msg = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1024,
-            messages=[{
-                "role": "user",
-                "content": f"請用繁體中文為以下筆記產生條列式大綱（Markdown 格式）：\n\n標題：{note.title}\n\n{note.content}"
-            }]
-        )
-        outline_text = msg.content[0].text
+        prompt = f"請用繁體中文為以下筆記產生條列式大綱（Markdown 格式）：\n\n標題：{note.title}\n\n{note.content}"
+        outline_text = call_llm(prompt, max_tokens=1024)
         note.ai_outline = outline_text
         note.updated_at = datetime.utcnow()
         db.session.commit()
         return jsonify({"status": "ok", "outline": outline_text})
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 503
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 

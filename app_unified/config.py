@@ -25,6 +25,10 @@ class Config:
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
     OPENWEATHERMAP_API_KEY = os.getenv("OPENWEATHERMAP_API_KEY", "")
 
+    # Ollama (self-hosted LLM, takes priority over Anthropic if set)
+    OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "")   # e.g. http://ollama.zeabur.internal:11434
+    OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
+
     # Cloudflare R2 (S3-compatible)
     R2_ENDPOINT_URL = os.getenv("R2_ENDPOINT_URL", "")
     R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID", "")

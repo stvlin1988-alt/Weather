@@ -15,6 +15,37 @@ except ImportError:
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 
+def call_llm(prompt: str, max_tokens: int = 2048) -> str:
+    """呼叫 Ollama（優先）或 Anthropic（fallback）。"""
+    ollama_url = current_app.config.get("OLLAMA_BASE_URL", "")
+    if ollama_url:
+        import requests as _req
+        resp = _req.post(
+            f"{ollama_url}/v1/chat/completions",
+            json={
+                "model": current_app.config.get("OLLAMA_MODEL", "llama3.2:1b"),
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": max_tokens,
+                "stream": False,
+            },
+            timeout=120,
+        )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"]
+
+    api_key = current_app.config.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise ValueError("未設定 AI 服務（請設定 OLLAMA_BASE_URL 或 ANTHROPIC_API_KEY）")
+    import anthropic
+    client = anthropic.Anthropic(api_key=api_key)
+    msg = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=max_tokens,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return msg.content[0].text
+
+
 def require_admin():
     if not current_user.is_authenticated or not current_user.is_admin():
         abort(403)
@@ -118,10 +149,6 @@ def set_store(user_id):
 @login_required
 def store_summary():
     require_admin()
-    api_key = current_app.config.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return jsonify({"status": "error", "message": "未設定 Anthropic API Key"}), 503
-
     data = request.get_json(silent=True) or {}
     store = data.get("store", "all")
     days = int(data.get("days", 7))
@@ -158,13 +185,9 @@ def store_summary():
     )
 
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        msg = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=2048,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return jsonify({"status": "ok", "summary": msg.content[0].text})
+        summary = call_llm(prompt, max_tokens=2048)
+        return jsonify({"status": "ok", "summary": summary})
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 503
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
