@@ -5,6 +5,7 @@ flask-migrate>=4.0
 flask-limiter>=3.5
 anthropic>=0.25
 face_recognition>=1.3
+face_recognition_models
 Pillow>=10.0
 python-dotenv>=1.0
 requests>=2.31

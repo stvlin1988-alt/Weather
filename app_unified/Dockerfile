@@ -9,8 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN pip install --no-cache-dir setuptools wheel cmake
 
-# Compile dlib only (inline CC/CXX/DLIB_NO_GUI_SUPPORT for subprocess reliability)
-RUN CC=gcc CXX=g++ DLIB_NO_GUI_SUPPORT=1 \
+# Compile dlib only — multi-core build to avoid timeout
+RUN CC=gcc CXX=g++ DLIB_NO_GUI_SUPPORT=1 MAKEFLAGS="-j$(nproc)" \
     pip install --no-cache-dir dlib==19.24.2
 
 # ── Stage 2: Runtime ─────────────────────────────────────────
