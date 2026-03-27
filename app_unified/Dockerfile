@@ -21,6 +21,10 @@ WORKDIR /app
 # Copy requirements first
 COPY requirements.txt .
 
+# Explicitly set compiler paths so cmake can detect them when compiling dlib
+ENV CC=/usr/bin/gcc
+ENV CXX=/usr/bin/g++
+
 # Install Python dependencies - dlib will compile here with all tools available
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r requirements.txt
