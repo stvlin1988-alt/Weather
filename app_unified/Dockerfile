@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-bullseye
 
 LABEL "language"="python"
 LABEL "framework"="flask"
@@ -6,6 +6,9 @@ LABEL "framework"="flask"
 # Install all system dependencies in one stage
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    gcc \
+    g++ \
+    make \
     cmake \
     git \
     libopenblas-dev \
