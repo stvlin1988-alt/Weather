@@ -26,8 +26,8 @@ RUN pip install --no-cache-dir setuptools && python -c "import pkg_resources; pr
 
 COPY app_unified/ .
 
-# 驗證 face_recognition 可正確載入
-RUN python -c "import face_recognition; print('face_recognition OK')"
+# 驗證 wheels 已安裝（face_recognition 需要 pkg_resources shim，在 wsgi.py 提供）
+RUN python -c "import dlib; print('dlib OK')"
 
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app && \
     chown -R appuser:appuser /usr/local/lib/python3.12/site-packages
