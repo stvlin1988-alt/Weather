@@ -13,7 +13,7 @@ WORKDIR /app
 
 # Pre-built dlib wheel — no compilation needed
 COPY app_unified/wheels/ /tmp/wheels/
-RUN pip install --no-cache-dir /tmp/wheels/dlib-*.whl && rm -rf /tmp/wheels
+RUN pip install --no-cache-dir --no-deps /tmp/wheels/dlib-*.whl && rm -rf /tmp/wheels
 
 # Build context is repo root — must use app_unified/ prefix
 COPY app_unified/requirements.txt .
