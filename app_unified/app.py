@@ -50,8 +50,11 @@ def create_app():
 
     with app.app_context():
         try:
+            print(f"=== DB URI: {app.config['SQLALCHEMY_DATABASE_URI'][:30]}... ===", flush=True)
             db.create_all()
-        except Exception:
+            print("=== db.create_all() OK ===", flush=True)
+        except Exception as e:
+            print(f"=== db.create_all() FAILED: {e} ===", flush=True)
             db.session.rollback()
         # Bootstrap: create default admin if no admin exists
         if not User.query.filter_by(role="admin").first():
