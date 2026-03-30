@@ -7,16 +7,9 @@
 #title-input { font-size: 1.3rem; font-weight: 700; border: none; border-bottom: 2px solid #eee; border-radius: 0; padding: 0.4rem 0; margin-bottom: .5rem; }
 #title-input:focus { border-color: #3498db; }
 #content-area { min-height: 300px; resize: vertical; font-size: 16px; line-height: 1.6; }
-.voice-btn { position: fixed; bottom: 2rem; right: 2rem; width: 72px; height: 72px;
-  background: #e74c3c; color: #fff; border: none; border-radius: 12px;
-  cursor: pointer; font-size: 1.8rem; display: flex; align-items: center;
-  justify-content: center; box-shadow: 0 4px 16px rgba(0,0,0,.25);
-  user-select: none; z-index: 999; touch-action: none; }
-.voice-btn.recording { animation: pulse 1s infinite; background: #c0392b; }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
 .ai-panel { margin-top: 1.5rem; border-top: 1px solid #eee; padding-top: 1rem; }
 .ai-result { background: #f8f9fa; border-radius: 6px; padding: 1rem; margin-top: .5rem; font-size: .9rem; white-space: pre-wrap; }
-.save-status { font-size: .8rem; color: #aaa; margin-left: auto; }
+.save-status { font-size: .85rem; color: #aaa; margin-left: auto; }
 .store-selector { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; margin-bottom: .75rem; }
 .store-selector label { font-size: .85rem; color: #666; margin-right: .25rem; }
 .store-btn { padding: .35rem .7rem; border-radius: 16px; font-size: .82rem; font-weight: 600; cursor: pointer; border: 2px solid #ddd; background: #f5f5f5; color: #555; transition: all .15s; min-height: 36px; }
@@ -64,7 +57,7 @@
   <div class="store-selector">
     <label>店別：</label>
     {% for s in ['B','C','D','E','F','G','J','JJ','K','Q','S'] %}
-    <button class="store-btn {% if note and note.store == s %}selected{% endif %}" data-store="{{ s }}" type="button">{{ s }}</button>
+    <button class="store-btn {% if note and note.store == s %}selected{% endif %}" data-store="{{ s }}" type="button" onclick="selectStore(this)">{{ s }}</button>
     {% endfor %}
   </div>
   {% else %}
@@ -91,9 +84,9 @@
     <button class="priority-btn {% if cur_priority == 'low' %}selected{% endif %}" data-priority="low" type="button" onclick="selectPriority(this)">低</button>
   </div>
   <div class="editor-toolbar">
-    <button class="btn btn-primary" id="btn-save">💾 儲存</button>
+    <button class="btn btn-primary" id="btn-save" onclick="doSave()">💾 儲存</button>
     {% if note %}
-    <button class="btn btn-danger" id="btn-delete" style="margin-left:auto;">刪除</button>
+    <button class="btn btn-danger" id="btn-delete" onclick="doDelete()" style="margin-left:auto;">刪除</button>
     {% endif %}
   </div>
   <textarea id="content-area" placeholder="開始輸入筆記內容…">{{ note.content if note else '' }}</textarea>
@@ -102,8 +95,8 @@
   <div class="ai-panel">
     <strong>AI 工具</strong>
     <div style="display:flex;gap:.5rem;margin-top:.5rem;flex-wrap:wrap;">
-      <button class="btn btn-secondary" id="btn-summarize">生成摘要</button>
-      <button class="btn btn-secondary" id="btn-outline">生成大綱</button>
+      <button class="btn btn-secondary" onclick="doSummarize()">生成摘要</button>
+      <button class="btn btn-secondary" onclick="doOutline()">生成大綱</button>
     </div>
     <div id="ai-result" class="ai-result" style="display:none;"></div>
   </div>
@@ -111,141 +104,96 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/voice_input.js') }}"></script>
 <script>
-window.onerror = function(msg, url, line) {
-  var d = document.getElementById('js-debug');
-  if (d) { d.textContent = 'JS ERROR: ' + msg + ' (line ' + line + ')'; d.style.background = '#e74c3c'; }
-};
-</script>
-<div id="js-debug" style="background:#e67e22;color:#fff;padding:8px;border-radius:4px;margin-bottom:8px;font-size:13px;">⏳ JS 載入中…</div>
-<script>
-try {
-let NOTE_ID = {{ (note.id if note else None)|tojson }};
-const titleEl = document.getElementById('title-input');
-const contentEl = document.getElementById('content-area');
-const statusEl = document.getElementById('save-status');
-let autoSaveTimer;
-let currentStore = {{ (note.store if note else None)|tojson }};
-let currentStatus = {{ (note.status if note else 'pending')|tojson }};
-let currentPriority = {{ (note.priority if note else 'medium')|tojson }};
+var NOTE_ID = {{ (note.id if note else None)|tojson }};
+var currentStore = {{ (note.store if note else None)|tojson }};
+var currentStatus = {{ (note.status if note else 'pending')|tojson }};
+var currentPriority = {{ (note.priority if note else 'medium')|tojson }};
 
-// 載入 updated_by 資訊
 {% if note and note.updated_by %}
-fetch(`/notes/api/${NOTE_ID}`).then(r => r.json()).then(data => {
-  const el = document.getElementById('updated-by-name');
+fetch('/notes/api/' + NOTE_ID).then(function(r) { return r.json(); }).then(function(data) {
+  var el = document.getElementById('updated-by-name');
   if (el && data.updated_by) el.textContent = data.updated_by;
-}).catch(() => {});
+}).catch(function() {});
 {% endif %}
 
-document.querySelectorAll('.store-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const s = btn.dataset.store;
-    if (currentStore === s) {
-      currentStore = null;
-      btn.classList.remove('selected');
-    } else {
-      document.querySelectorAll('.store-btn').forEach(b => b.classList.remove('selected'));
-      btn.classList.add('selected');
-      currentStore = s;
-    }
-    scheduleAutoSave();
-  });
-});
-
-function selectStatus(btn) {
-  document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('selected'));
-  btn.classList.add('selected');
-  currentStatus = btn.dataset.status;
-}
-
-function selectPriority(btn) {
-  document.querySelectorAll('.priority-btn').forEach(b => b.classList.remove('selected'));
-  btn.classList.add('selected');
-  currentPriority = btn.dataset.priority;
-}
-
-function scheduleAutoSave() {
-  clearTimeout(autoSaveTimer);
-  autoSaveTimer = setTimeout(saveNote, 2000);
-}
-titleEl.addEventListener('input', scheduleAutoSave);
-contentEl.addEventListener('input', scheduleAutoSave);
-
-async function saveNote() {
-  const title = titleEl.value.trim() || '未命名筆記';
-  const content = contentEl.value;
-  const store = currentStore || null;
-  statusEl.textContent = '儲存中…';
-  if (NOTE_ID) {
-    await fetch(`/notes/api/${NOTE_ID}`, {
-      method: 'PUT', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ title, content, store, status: currentStatus, priority: currentPriority })
-    });
-    statusEl.textContent = '已儲存';
+function selectStore(btn) {
+  var s = btn.getAttribute('data-store');
+  if (currentStore === s) {
+    currentStore = null;
+    btn.classList.remove('selected');
   } else {
-    const res = await fetch('/notes/api', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ title, content, store, status: currentStatus, priority: currentPriority })
-    });
-    const data = await res.json();
-    if (data.id) {
-      history.replaceState(null, '', `/notes/${data.id}`);
-      NOTE_ID = data.id;
-      statusEl.textContent = '已儲存';
-    }
+    var all = document.querySelectorAll('.store-btn');
+    for (var i = 0; i < all.length; i++) all[i].classList.remove('selected');
+    btn.classList.add('selected');
+    currentStore = s;
   }
 }
 
-document.getElementById('btn-save')?.addEventListener('click', async () => {
-  clearTimeout(autoSaveTimer);
-  await saveNote();
-  location.href = '/notes/';
-});
+function selectStatus(btn) {
+  var all = document.querySelectorAll('.status-btn');
+  for (var i = 0; i < all.length; i++) all[i].classList.remove('selected');
+  btn.classList.add('selected');
+  currentStatus = btn.getAttribute('data-status');
+}
 
-document.getElementById('btn-delete')?.addEventListener('click', async () => {
+function selectPriority(btn) {
+  var all = document.querySelectorAll('.priority-btn');
+  for (var i = 0; i < all.length; i++) all[i].classList.remove('selected');
+  btn.classList.add('selected');
+  currentPriority = btn.getAttribute('data-priority');
+}
+
+function doSave() {
+  var title = document.getElementById('title-input').value.trim() || '未命名筆記';
+  var content = document.getElementById('content-area').value;
+  var store = currentStore || null;
+  var statusEl = document.getElementById('save-status');
+  var saveBtn = document.getElementById('btn-save');
+  statusEl.textContent = '儲存中…';
+  saveBtn.disabled = true;
+
+  var url = NOTE_ID ? ('/notes/api/' + NOTE_ID) : '/notes/api';
+  var method = NOTE_ID ? 'PUT' : 'POST';
+
+  fetch(url, {
+    method: method,
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ title: title, content: content, store: store, status: currentStatus, priority: currentPriority })
+  }).then(function(res) { return res.json(); }).then(function(data) {
+    if (data.status === 'ok' || data.id) {
+      window.location.href = '/notes/';
+    } else {
+      statusEl.textContent = '儲存失敗：' + (data.message || '未知錯誤');
+      saveBtn.disabled = false;
+    }
+  }).catch(function(err) {
+    statusEl.textContent = '儲存失敗：' + err.message;
+    saveBtn.disabled = false;
+  });
+}
+
+function doDelete() {
   if (!NOTE_ID || !confirm('確定要刪除這篇筆記？')) return;
-  await fetch(`/notes/api/${NOTE_ID}`, { method: 'DELETE' });
-  location.href = '/notes/';
-});
+  fetch('/notes/api/' + NOTE_ID, { method: 'DELETE' }).then(function() {
+    window.location.href = '/notes/';
+  });
+}
 
-const voice = new VoiceInput(contentEl);
-const voiceBtn = document.createElement('button');
-voiceBtn.className = 'voice-btn';
-voiceBtn.title = '長按語音輸入';
-voiceBtn.textContent = '🎤';
-document.body.appendChild(voiceBtn);
+function doSummarize() {
+  fetch('/notes/api/' + NOTE_ID + '/summarize', { method: 'POST' }).then(function(r) { return r.json(); }).then(function(data) {
+    var el = document.getElementById('ai-result');
+    el.style.display = 'block';
+    el.textContent = data.summary || data.message || '錯誤';
+  });
+}
 
-function startVoice() { if (voice.isRecording) return; voice.start(); voiceBtn.classList.add('recording'); }
-function stopVoice() { if (!voice.isRecording) return; voice.stop(); voiceBtn.classList.remove('recording'); }
-
-voiceBtn.addEventListener('mousedown', e => { e.preventDefault(); startVoice(); });
-voiceBtn.addEventListener('mouseup', stopVoice);
-voiceBtn.addEventListener('mouseleave', stopVoice);
-voiceBtn.addEventListener('touchstart', e => { e.preventDefault(); startVoice(); });
-voiceBtn.addEventListener('touchend', stopVoice);
-voiceBtn.addEventListener('touchcancel', stopVoice);
-
-document.getElementById('btn-summarize')?.addEventListener('click', async () => {
-  const res = await fetch(`/notes/api/${NOTE_ID}/summarize`, { method: 'POST' });
-  const data = await res.json();
-  const el = document.getElementById('ai-result');
-  el.style.display = 'block';
-  el.textContent = data.summary || data.message || '錯誤';
-});
-document.getElementById('btn-outline')?.addEventListener('click', async () => {
-  const res = await fetch(`/notes/api/${NOTE_ID}/outline`, { method: 'POST' });
-  const data = await res.json();
-  const el = document.getElementById('ai-result');
-  el.style.display = 'block';
-  el.textContent = data.outline || data.message || '錯誤';
-});
-
-document.getElementById('js-debug').textContent = '✅ JS 載入成功';
-document.getElementById('js-debug').style.background = '#27ae60';
-} catch(e) {
-  document.getElementById('js-debug').textContent = '❌ JS ERROR: ' + e.message;
-  document.getElementById('js-debug').style.background = '#e74c3c';
+function doOutline() {
+  fetch('/notes/api/' + NOTE_ID + '/outline', { method: 'POST' }).then(function(r) { return r.json(); }).then(function(data) {
+    var el = document.getElementById('ai-result');
+    el.style.display = 'block';
+    el.textContent = data.outline || data.message || '錯誤';
+  });
 }
 </script>
 {% endblock %}

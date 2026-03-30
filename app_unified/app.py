@@ -52,6 +52,17 @@ def create_app():
         try:
             print(f"=== DB URI: {app.config['SQLALCHEMY_DATABASE_URI'][:30]}... ===", flush=True)
             db.create_all()
+            # 修復 PostgreSQL sequence（避免 duplicate key error）
+            if 'postgresql' in app.config['SQLALCHEMY_DATABASE_URI']:
+                for table in ['notes', 'users', 'stores', 'note_logs']:
+                    try:
+                        db.session.execute(db.text(
+                            f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "
+                            f"COALESCE((SELECT MAX(id) FROM {table}), 0) + 1, false)"
+                        ))
+                    except Exception:
+                        pass
+                db.session.commit()
             print("=== db.create_all() OK ===", flush=True)
         except Exception as e:
             print(f"=== db.create_all() FAILED: {e} ===", flush=True)
