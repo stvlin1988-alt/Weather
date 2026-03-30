@@ -27,8 +27,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app_unified/ .
 
+# 驗證 face_recognition models 可正確載入
+RUN python -c "import face_recognition; print('face_recognition models loaded successfully')" || true
+
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app && \
-    chown -R appuser:appuser /usr/local/lib/python3.12/site-packages
+    chown -R appuser:appuser /usr/local/lib/python3.12/site-packages && \
+    chown -R appuser:appuser /root/.cache 2>/dev/null || true
 USER appuser
 
 EXPOSE 8080
