@@ -22,7 +22,7 @@ from models import User, Store
 try:
     import face_recognition
     FACE_RECOGNITION_AVAILABLE = True
-except ImportError:
+except Exception:
     FACE_RECOGNITION_AVAILABLE = False
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
