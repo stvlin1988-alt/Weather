@@ -91,6 +91,7 @@
     <button class="priority-btn {% if cur_priority == 'low' %}selected{% endif %}" data-priority="low" type="button">低</button>
   </div>
   <div class="editor-toolbar">
+    <button class="btn btn-primary" id="btn-save">💾 儲存</button>
     {% if note %}
     <button class="btn btn-danger" id="btn-delete" style="margin-left:auto;">刪除</button>
     {% endif %}
@@ -193,6 +194,11 @@ async function saveNote() {
     }
   }
 }
+
+document.getElementById('btn-save')?.addEventListener('click', () => {
+  clearTimeout(autoSaveTimer);
+  saveNote();
+});
 
 document.getElementById('btn-delete')?.addEventListener('click', async () => {
   if (!NOTE_ID || !confirm('確定要刪除這篇筆記？')) return;
