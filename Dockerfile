@@ -26,9 +26,9 @@ COPY app_unified/ .
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
-EXPOSE 5000
+EXPOSE 8080
 
 ENV PYTHONUNBUFFERED=1
 ENV SESSION_COOKIE_SECURE=true
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "--preload", "-c", "gunicorn.conf.py", "wsgi:app"]
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-8080} --workers 2 --timeout 120 --preload -c gunicorn.conf.py wsgi:app"]
