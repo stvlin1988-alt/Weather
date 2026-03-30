@@ -23,18 +23,35 @@ def call_llm(prompt: str, max_tokens: int = 2048) -> str:
     ollama_url = current_app.config.get("OLLAMA_HOST", "")
     if ollama_url:
         import requests as _req
+        model = current_app.config.get("OLLAMA_MODEL", "llama3.2:1b")
+        # 先嘗試 OpenAI 相容 API，失敗則用 Ollama 原生 API
+        try:
+            resp = _req.post(
+                f"{ollama_url}/v1/chat/completions",
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": max_tokens,
+                    "stream": False,
+                },
+                timeout=120,
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+        except (_req.exceptions.HTTPError, KeyError):
+            pass
+        # Ollama 原生 API
         resp = _req.post(
-            f"{ollama_url}/v1/chat/completions",
+            f"{ollama_url}/api/chat",
             json={
-                "model": current_app.config.get("OLLAMA_MODEL", "llama3.2:1b"),
+                "model": model,
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": max_tokens,
                 "stream": False,
             },
             timeout=120,
         )
         resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
+        return resp.json()["message"]["content"]
 
     api_key = current_app.config.get("ANTHROPIC_API_KEY", "")
     if not api_key:
