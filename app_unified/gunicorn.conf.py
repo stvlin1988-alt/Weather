@@ -1,3 +1,16 @@
+import os
+
+bind = f"0.0.0.0:{os.environ.get('PORT', '8080')}"
+workers = 2
+worker_class = "sync"
+timeout = 120
+keepalive = 2
+accesslog = "-"
+errorlog = "-"
+loglevel = "info"
+preload_app = True
+
+
 def post_fork(server, worker):
     from wsgi import app
     from extensions import db

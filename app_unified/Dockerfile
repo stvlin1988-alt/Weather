@@ -40,4 +40,4 @@ EXPOSE 8080
 ENV PYTHONUNBUFFERED=1
 ENV SESSION_COOKIE_SECURE=true
 
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-8080} --workers 2 --timeout 120 --preload --access-logfile - -c gunicorn.conf.py wsgi:app"]
+CMD ["gunicorn", "-c", "gunicorn.conf.py", "wsgi:app"]
