@@ -31,12 +31,9 @@ def index():
     range_param = request.args.get("range", "3d")
     stores = _get_stores()
 
-    if current_user.is_admin():
-        query = Note.query
-        if store_filter in stores:
-            query = query.filter_by(store=store_filter)
-    else:
-        query = Note.query.filter_by(user_id=current_user.id)
+    query = Note.query
+    if store_filter in stores:
+        query = query.filter_by(store=store_filter)
 
     query = _date_filter(query, range_param)
     if status_filter in STATUS_CHOICES:
@@ -65,12 +62,9 @@ def list_notes():
     range_param = request.args.get("range", "3d")
     stores = _get_stores()
 
-    if current_user.is_admin():
-        query = Note.query
-        if store_filter in stores:
-            query = query.filter_by(store=store_filter)
-    else:
-        query = Note.query.filter_by(user_id=current_user.id)
+    query = Note.query
+    if store_filter in stores:
+        query = query.filter_by(store=store_filter)
 
     query = _date_filter(query, range_param)
     if status_filter in STATUS_CHOICES:
