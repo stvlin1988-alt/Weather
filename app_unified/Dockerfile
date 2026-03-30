@@ -21,6 +21,9 @@ RUN pip install --no-cache-dir --no-deps /tmp/wheels/*.whl && rm -rf /tmp/wheels
 COPY app_unified/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# 確保 setuptools 存在（face_recognition_models 需要 pkg_resources）
+RUN pip install --no-cache-dir setuptools && python -c "import pkg_resources; print('pkg_resources OK')"
+
 COPY app_unified/ .
 
 # 驗證 face_recognition 可正確載入
