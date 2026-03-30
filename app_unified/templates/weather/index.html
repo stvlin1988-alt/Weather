@@ -304,6 +304,12 @@
         case 'face_mismatch':
           showMsg('1失敗，請重試', 'err');
           break;
+        case 'store_disabled':
+          modal.classList.remove('open');
+          showMsg('');
+          document.getElementById('m-pin').value = '';
+          if (window.stopModalCamera) window.stopModalCamera();
+          break;
         default:
           showMsg('驗證失敗，請重試', 'err');
       }

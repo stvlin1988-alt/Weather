@@ -121,6 +121,21 @@ def toggle_user(user_id):
     return jsonify({"status": "ok", "is_active": user.is_active})
 
 
+@admin_bp.route("/users/<int:user_id>", methods=["DELETE"])
+@login_required
+def delete_user(user_id):
+    require_admin()
+    user = User.query.get_or_404(user_id)
+    if user.id == current_user.id:
+        return jsonify({"status": "error", "message": "不可刪除自己"}), 400
+    # Log 保留（note_id/user_id 已設 ON DELETE SET NULL，30 天後自動清理）
+    Note.query.filter_by(user_id=user.id).delete()
+    Note.query.filter_by(updated_by=user.id).update({"updated_by": None})
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({"status": "ok"})
+
+
 @admin_bp.route("/users/<int:user_id>/set-role", methods=["POST"])
 @login_required
 def set_role(user_id):

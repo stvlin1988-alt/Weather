@@ -105,7 +105,7 @@ def verify():
         if not matched.is_admin() and matched.store:
             s = Store.query.filter_by(name=matched.store).first()
             if s and not s.login_enabled:
-                return jsonify({"status": "error", "message": "錯誤2"})
+                return jsonify({"status": "store_disabled"})
         login_user(matched)
         session.permanent = True
         logger.warning("verify: PIN matched, face matched user=%s", matched.username)

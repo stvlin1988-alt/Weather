@@ -84,12 +84,21 @@ th { background: #f8f9fa; font-weight: 700; }
 </div>
 <div class="card" style="margin-top:1rem;">
   <h3>使用者列表</h3>
+  <div style="margin-top:.75rem;margin-bottom:.5rem;">
+    <label style="font-size:.9rem;margin-right:.5rem;">篩選店別：</label>
+    <select id="filter-user-store" onchange="filterUsersByStore(this.value)" style="font-size:.9rem;padding:.4rem .6rem;border-radius:6px;border:1px solid #ddd;min-height:36px;">
+      <option value="">全部</option>
+      {% for s in stores %}
+      <option value="{{ s }}">{{ s }} 店</option>
+      {% endfor %}
+    </select>
+  </div>
   <table>
     <thead><tr><th>ID</th><th>名稱</th><th>店別</th><th>角色</th><th>狀態</th><th>建立時間</th><th>操作</th></tr></thead>
     <tbody>
     {% set store_colors = {'B':'#3498db','C':'#27ae60','D':'#e67e22','E':'#e74c3c','F':'#9b59b6','G':'#1abc9c','J':'#f39c12','JJ':'#8e44ad','K':'#2980b9','Q':'#c0392b','S':'#16a085'} %}
     {% for user in users %}
-    <tr id="user-{{ user.id }}">
+    <tr id="user-{{ user.id }}" data-store="{{ user.store or '' }}">
       <td>{{ user.id }}</td>
       <td>{{ user.username }}</td>
       <td>
@@ -114,6 +123,9 @@ th { background: #f8f9fa; font-weight: 700; }
           <option value="user" {% if user.role=='user' %}selected{% endif %}>user</option>
           <option value="admin" {% if user.role=='admin' %}selected{% endif %}>admin</option>
         </select>
+        {% if user.id != current_user.id %}
+        <button class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .7rem;min-height:36px;color:#dc3545;margin-left:.3rem;" onclick="deleteUser({{ user.id }}, '{{ user.username }}')">刪除</button>
+        {% endif %}
       </td>
     </tr>
     {% endfor %}
@@ -343,6 +355,28 @@ async function loadLogs() {
       <td style="font-size:.8rem;color:#666;">${l.diff || '—'}</td>
     </tr>
   `).join('');
+}
+
+function filterUsersByStore(store) {
+  const rows = document.querySelectorAll('table tbody tr[data-store]');
+  rows.forEach(row => {
+    if (!store || row.dataset.store === store) {
+      row.style.display = '';
+    } else {
+      row.style.display = 'none';
+    }
+  });
+}
+
+async function deleteUser(id, username) {
+  if (!confirm(`確定要刪除員工「${username}」？\n此操作會同時刪除該員工的所有筆記，且無法復原！`)) return;
+  const res = await fetch(`/admin/users/${id}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (data.status === 'ok') {
+    document.getElementById(`user-${id}`)?.remove();
+  } else {
+    alert(data.message || '刪除失敗');
+  }
 }
 
 // 頁面載入時自動載入店家列表
