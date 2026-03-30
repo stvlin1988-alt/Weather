@@ -113,6 +113,14 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/voice_input.js') }}"></script>
 <script>
+window.onerror = function(msg, url, line) {
+  var d = document.getElementById('js-debug');
+  if (d) { d.textContent = 'JS ERROR: ' + msg + ' (line ' + line + ')'; d.style.background = '#e74c3c'; }
+};
+</script>
+<div id="js-debug" style="background:#e67e22;color:#fff;padding:8px;border-radius:4px;margin-bottom:8px;font-size:13px;">⏳ JS 載入中…</div>
+<script>
+try {
 let NOTE_ID = {{ note.id if note else 'null' }};
 const titleEl = document.getElementById('title-input');
 const contentEl = document.getElementById('content-area');
@@ -232,5 +240,12 @@ document.getElementById('btn-outline')?.addEventListener('click', async () => {
   el.style.display = 'block';
   el.textContent = data.outline || data.message || '錯誤';
 });
+
+document.getElementById('js-debug').textContent = '✅ JS 載入成功';
+document.getElementById('js-debug').style.background = '#27ae60';
+} catch(e) {
+  document.getElementById('js-debug').textContent = '❌ JS ERROR: ' + e.message;
+  document.getElementById('js-debug').style.background = '#e74c3c';
+}
 </script>
 {% endblock %}
