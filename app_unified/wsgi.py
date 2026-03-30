@@ -1,4 +1,5 @@
-import sys
+import os, sys
+print(f"=== wsgi.py: PORT={os.environ.get('PORT', 'NOT SET')} ===", flush=True)
 print("=== wsgi.py: starting create_app ===", flush=True)
 try:
     from app import create_app

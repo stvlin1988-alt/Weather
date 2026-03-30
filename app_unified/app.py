@@ -93,6 +93,10 @@ def create_app():
         return send_from_directory(app.static_folder, "sw.js",
                                    mimetype="application/javascript")
 
+    @app.route("/healthz")
+    def healthz():
+        return "ok", 200
+
     @app.route("/")
     def index():
         if os.getenv("APP_MODE") == "notes":
