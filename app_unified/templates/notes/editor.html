@@ -121,14 +121,14 @@ window.onerror = function(msg, url, line) {
 <div id="js-debug" style="background:#e67e22;color:#fff;padding:8px;border-radius:4px;margin-bottom:8px;font-size:13px;">⏳ JS 載入中…</div>
 <script>
 try {
-let NOTE_ID = {{ note.id if note else 'null' }};
+let NOTE_ID = {{ (note.id if note else None)|tojson }};
 const titleEl = document.getElementById('title-input');
 const contentEl = document.getElementById('content-area');
 const statusEl = document.getElementById('save-status');
 let autoSaveTimer;
-let currentStore = {{ '"' + note.store + '"' if note and note.store else 'null' }};
-let currentStatus = {{ '"' + note.status + '"' if note and note.status else '"pending"' }};
-let currentPriority = {{ '"' + (note.priority if note and note.priority else 'medium') + '"' }};
+let currentStore = {{ (note.store if note else None)|tojson }};
+let currentStatus = {{ (note.status if note else 'pending')|tojson }};
+let currentPriority = {{ (note.priority if note else 'medium')|tojson }};
 
 // 載入 updated_by 資訊
 {% if note and note.updated_by %}
