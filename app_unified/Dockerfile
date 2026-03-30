@@ -12,6 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
 # Pre-built dlib wheel — no compilation needed
 COPY app_unified/wheels/ /tmp/wheels/
 RUN pip install --no-cache-dir --no-deps /tmp/wheels/dlib-*.whl && rm -rf /tmp/wheels
@@ -21,8 +23,7 @@ RUN pip install --no-cache-dir git+https://github.com/ageitgey/face_recognition_
 
 # Build context is repo root — must use app_unified/ prefix
 COPY app_unified/requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app_unified/ .
 
