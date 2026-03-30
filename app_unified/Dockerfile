@@ -27,7 +27,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app_unified/ .
 
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app && \
+    chown -R appuser:appuser /usr/local/lib/python3.12/site-packages
 USER appuser
 
 EXPOSE 8080
