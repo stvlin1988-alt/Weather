@@ -112,7 +112,7 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/voice_input.js') }}"></script>
 <script>
-const NOTE_ID = {{ note.id if note else 'null' }};
+let NOTE_ID = {{ note.id if note else 'null' }};
 const titleEl = document.getElementById('title-input');
 const contentEl = document.getElementById('content-area');
 const statusEl = document.getElementById('save-status');
@@ -188,7 +188,7 @@ async function saveNote() {
     const data = await res.json();
     if (data.id) {
       history.replaceState(null, '', `/notes/${data.id}`);
-      window.NOTE_ID = data.id;
+      NOTE_ID = data.id;
       statusEl.textContent = '已儲存';
     }
   }
