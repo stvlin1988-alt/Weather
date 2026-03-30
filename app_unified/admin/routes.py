@@ -10,7 +10,9 @@ try:
     import face_recognition_models
     import face_recognition
     FACE_RECOGNITION_AVAILABLE = True
-except BaseException:
+except BaseException as _e:
+    import logging as _log
+    _log.getLogger(__name__).warning("face_recognition import failed: %s", _e)
     FACE_RECOGNITION_AVAILABLE = False
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
