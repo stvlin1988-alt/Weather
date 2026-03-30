@@ -1,4 +1,12 @@
 import os
+import subprocess
+import sys
+
+# 確保 setuptools 存在（face_recognition_models 需要 pkg_resources）
+try:
+    import pkg_resources
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "setuptools"])
 
 bind = f"0.0.0.0:{os.environ.get('PORT', '8080')}"
 workers = 1
