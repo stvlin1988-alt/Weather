@@ -79,16 +79,16 @@
   {% endif %}
   <div class="status-selector">
     <label>狀態：</label>
-    <button class="status-btn {% if not note or note.status == 'pending' %}selected{% endif %}" data-status="pending" type="button">待處理</button>
-    <button class="status-btn {% if note and note.status == 'in_progress' %}selected{% endif %}" data-status="in_progress" type="button">處理中</button>
-    <button class="status-btn {% if note and note.status == 'resolved' %}selected{% endif %}" data-status="resolved" type="button">已解決</button>
+    <button class="status-btn {% if not note or note.status == 'pending' %}selected{% endif %}" data-status="pending" type="button" onclick="selectStatus(this)">待處理</button>
+    <button class="status-btn {% if note and note.status == 'in_progress' %}selected{% endif %}" data-status="in_progress" type="button" onclick="selectStatus(this)">處理中</button>
+    <button class="status-btn {% if note and note.status == 'resolved' %}selected{% endif %}" data-status="resolved" type="button" onclick="selectStatus(this)">已解決</button>
   </div>
   {% set cur_priority = note.priority if note and note.priority else 'medium' %}
   <div class="priority-selector">
     <label>優先度：</label>
-    <button class="priority-btn {% if cur_priority == 'high' %}selected{% endif %}" data-priority="high" type="button">高</button>
-    <button class="priority-btn {% if cur_priority == 'medium' %}selected{% endif %}" data-priority="medium" type="button">中</button>
-    <button class="priority-btn {% if cur_priority == 'low' %}selected{% endif %}" data-priority="low" type="button">低</button>
+    <button class="priority-btn {% if cur_priority == 'high' %}selected{% endif %}" data-priority="high" type="button" onclick="selectPriority(this)">高</button>
+    <button class="priority-btn {% if cur_priority == 'medium' %}selected{% endif %}" data-priority="medium" type="button" onclick="selectPriority(this)">中</button>
+    <button class="priority-btn {% if cur_priority == 'low' %}selected{% endif %}" data-priority="low" type="button" onclick="selectPriority(this)">低</button>
   </div>
   <div class="editor-toolbar">
     <button class="btn btn-primary" id="btn-save">💾 儲存</button>
@@ -145,23 +145,17 @@ document.querySelectorAll('.store-btn').forEach(btn => {
   });
 });
 
-document.querySelectorAll('.status-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('selected'));
-    btn.classList.add('selected');
-    currentStatus = btn.dataset.status;
-    scheduleAutoSave();
-  });
-});
+function selectStatus(btn) {
+  document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  currentStatus = btn.dataset.status;
+}
 
-document.querySelectorAll('.priority-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.priority-btn').forEach(b => b.classList.remove('selected'));
-    btn.classList.add('selected');
-    currentPriority = btn.dataset.priority;
-    scheduleAutoSave();
-  });
-});
+function selectPriority(btn) {
+  document.querySelectorAll('.priority-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  currentPriority = btn.dataset.priority;
+}
 
 function scheduleAutoSave() {
   clearTimeout(autoSaveTimer);
@@ -195,9 +189,10 @@ async function saveNote() {
   }
 }
 
-document.getElementById('btn-save')?.addEventListener('click', () => {
+document.getElementById('btn-save')?.addEventListener('click', async () => {
   clearTimeout(autoSaveTimer);
-  saveNote();
+  await saveNote();
+  location.href = '/notes/';
 });
 
 document.getElementById('btn-delete')?.addEventListener('click', async () => {
