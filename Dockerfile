@@ -16,6 +16,9 @@ WORKDIR /app
 COPY app_unified/wheels/ /tmp/wheels/
 RUN pip install --no-cache-dir --no-deps /tmp/wheels/dlib-*.whl && rm -rf /tmp/wheels
 
+# face_recognition_models 必須從 git 安裝（PyPI 版本不完整）
+RUN pip install --no-cache-dir git+https://github.com/ageitgey/face_recognition_models
+
 # Build context is repo root — must use app_unified/ prefix
 COPY app_unified/requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
