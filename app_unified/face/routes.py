@@ -11,9 +11,10 @@ import storage as r2_storage
 logger = logging.getLogger(__name__)
 
 try:
+    import face_recognition_models
     import face_recognition
     FACE_RECOGNITION_AVAILABLE = True
-except Exception:
+except BaseException:
     FACE_RECOGNITION_AVAILABLE = False
 
 face_bp = Blueprint("face", __name__, url_prefix="/face")

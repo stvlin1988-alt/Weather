@@ -20,9 +20,10 @@ from extensions import db, limiter
 from models import User, Store
 
 try:
+    import face_recognition_models
     import face_recognition
     FACE_RECOGNITION_AVAILABLE = True
-except Exception:
+except BaseException:
     FACE_RECOGNITION_AVAILABLE = False
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")

@@ -7,9 +7,10 @@ from extensions import db
 from models import User, Note, Store, NoteLog, STATUS_CHOICES
 
 try:
+    import face_recognition_models
     import face_recognition
     FACE_RECOGNITION_AVAILABLE = True
-except Exception:
+except BaseException:
     FACE_RECOGNITION_AVAILABLE = False
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
