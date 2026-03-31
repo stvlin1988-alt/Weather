@@ -110,3 +110,18 @@ class WeatherCache(db.Model):
     city_key = db.Column(db.Text, unique=True, nullable=False)
     data_json = db.Column(db.Text, nullable=False)
     cached_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
+class TrustedDevice(db.Model):
+    __tablename__ = "trusted_devices"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    fingerprint = db.Column(db.Text, unique=True, nullable=False)
+    device_name = db.Column(db.Text, nullable=False, default="Unknown")
+    is_approved = db.Column(db.Boolean, nullable=False, default=False)
+    is_revoked = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    last_seen_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    user = db.relationship("User", foreign_keys=[user_id])
