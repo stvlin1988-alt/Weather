@@ -54,7 +54,7 @@ def create_app():
             db.create_all()
             # 修復 PostgreSQL sequence（避免 duplicate key error）
             if 'postgresql' in app.config['SQLALCHEMY_DATABASE_URI']:
-                for table in ['notes', 'users', 'stores', 'note_logs']:
+                for table in ['notes', 'users', 'stores', 'note_logs', 'trusted_devices']:
                     try:
                         db.session.execute(db.text(
                             f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "
@@ -67,12 +67,7 @@ def create_app():
         except Exception as e:
             print(f"=== db.create_all() FAILED: {e} ===", flush=True)
             db.session.rollback()
-        # Bootstrap: create default admin if no admin exists
-        if not User.query.filter_by(role="admin").first():
-            default_admin = User(username="admin", role="admin")
-            default_admin.set_password("9210")
-            db.session.add(default_admin)
-            db.session.commit()
+        # 種子模式由 device blueprint 處理，不再自動建立預設 admin
 
     # Flask 2.x: g is app-context-scoped, not request-scoped.
     # In production each request gets a fresh app context so this is a no-op.
@@ -90,12 +85,14 @@ def create_app():
     from notes.routes import notes_bp
     from weather.routes import weather_bp
     from admin.routes import admin_bp
+    from device.routes import device_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(face_bp)
     app.register_blueprint(notes_bp)
     app.register_blueprint(weather_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(device_bp)
 
     # Register PWA service worker scope
     @app.route("/sw.js")
