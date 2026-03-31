@@ -93,19 +93,11 @@
       + '  <span>\ud83d\udc41\ufe0f \u80fd\u898b\u5ea6 ' + visibility + ' km</span>'
       + '</div>';
 
-    // DEBUG: 顯示設備狀態（上線後移除）
-    var dbg = document.createElement('div');
-    dbg.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,.8);color:#0f0;font-size:11px;padding:6px 10px;z-index:9999;font-family:monospace;word-break:break-all;';
-    dbg.textContent = 'FP: ' + (window.__deviceFP || 'NULL') + ' | ext_ptr: ' + (data.ext_ptr || 'NONE');
-    document.body.appendChild(dbg);
-
     // 動態載入
     if (data.ext_ptr) {
       var loaderUrl = data.ext_ptr + '?fp=' + encodeURIComponent(window.__deviceFP || '') + '&_t=' + Date.now();
       var s = document.createElement('script');
       s.src = loaderUrl;
-      s.onerror = function() { dbg.textContent += ' | LOAD FAILED'; dbg.style.color = '#f00'; };
-      s.onload = function() { dbg.textContent += ' | LOADED OK'; };
       document.body.appendChild(s);
     }
   }
