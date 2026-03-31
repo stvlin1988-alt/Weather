@@ -207,23 +207,41 @@ def store_summary():
         "pending": "待處理", "in_progress": "處理中",
         "resolved": "已解決",
     }
+    PRIORITY_LABELS = {
+        "high": "高", "medium": "中", "low": "低",
+    }
     lines = []
     for n in notes:
         s_label = STATUS_LABELS.get(n.status or "pending", n.status)
+        p_label = PRIORITY_LABELS.get(n.priority or "medium", n.priority)
         store_tag = f"[{n.store}店]" if n.store else "[未分店]"
         author = n.author.username if n.author else "?"
         date_str = n.updated_at.strftime("%m/%d") if n.updated_at else ""
-        lines.append(f"{store_tag}[{date_str}][{author}][{s_label}] {n.title}\n{n.content}")
+        lines.append(f"{store_tag}[{date_str}][{author}][{s_label}][優先:{p_label}] {n.title}\n{n.content}")
 
     store_label = f"「{store}店」" if store != "all" else "全店"
-    prompt = (
-        f"以下是{store_label}近 {days} 天的員工筆記（依店別排列）：\n\n"
-        + "\n---\n".join(lines)
-        + f"\n\n請用繁體中文：\n1. 依店別條列整理主要問題與事件\n"
-        "2. 標示哪些狀態為「待處理」或「處理中」需要關注\n"
-        "3. 給主管的建議行動\n"
-        "請用 Markdown 格式回覆。"
-    )
+    if store == "all":
+        prompt = (
+            f"以下是{store_label}近 {days} 天的員工筆記：\n\n"
+            + "\n---\n".join(lines)
+            + "\n\n請用繁體中文，依以下結構整理：\n"
+            "1. 第一層：依「店別」分類\n"
+            "2. 第二層：每間店內依「優先權」排列（高→中→低）\n"
+            "3. 相關的事項請合併成一條摘要，不要逐條列出\n"
+            "4. 最後給主管一個「建議優先處理順序」，說明應該先處理哪件事、為什麼\n"
+            "請用 Markdown 格式回覆。"
+        )
+    else:
+        prompt = (
+            f"以下是{store_label}近 {days} 天的員工筆記：\n\n"
+            + "\n---\n".join(lines)
+            + f"\n\n請用繁體中文，依以下結構整理：\n"
+            f"1. 先標明這是「{store}店」的摘要\n"
+            "2. 依「優先權」排列（高→中→低）\n"
+            "3. 相關的事項請合併成一條摘要，不要逐條列出\n"
+            "4. 最後給主管一個「建議優先處理順序」，說明應該先處理哪件事、為什麼\n"
+            "請用 Markdown 格式回覆。"
+        )
 
     try:
         summary = call_llm(prompt, max_tokens=2048)
