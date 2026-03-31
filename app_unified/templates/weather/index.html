@@ -42,31 +42,6 @@
     .aqi-label { font-size: .75rem; opacity: .7; margin-bottom: .3rem; letter-spacing: .05em; }
     .aqi-level { font-size: 2.5rem; font-weight: 700; line-height: 1; }
     .aqi-detail { font-size: .85rem; opacity: .75; margin-top: .3rem; }
-
-    /* Auth Modal */
-    #auth-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
-                  z-index: 1000; align-items: center; justify-content: center; }
-    #auth-modal.open { display: flex; }
-    .modal-box { background: #fff; color: #333; border-radius: 16px; padding: 2rem;
-                 width: 360px; max-width: 95vw; position: relative; }
-    .modal-box h2 { margin-bottom: 1.25rem; color: #2c3e50; }
-    .modal-close { position: absolute; top: .75rem; right: 1rem; font-size: 1.5rem;
-                   background: none; border: none; cursor: pointer; color: #888;
-                   min-width: 44px; min-height: 44px; }
-    .modal-form-group { margin-bottom: .9rem; }
-    .modal-form-group label { display: block; margin-bottom: .3rem; font-size: .85rem;
-                               font-weight: 600; color: #555; }
-    .modal-form-group input { width: 100%; padding: .55rem .75rem; border: 1px solid #ddd;
-                               border-radius: 6px; font-size: 16px; }
-    .modal-form-group input:focus { outline: none; border-color: #3498db; }
-    .btn-modal { display: block; width: 100%; padding: .75rem; border-radius: 8px; border: none;
-                 cursor: pointer; font-size: .95rem; margin-top: .5rem; font-weight: 600; min-height: 44px; }
-    .btn-modal-primary { background: #3498db; color: #fff; }
-    .btn-modal-primary:hover { background: #2980b9; }
-    #modal-msg { text-align: center; font-size: .9rem; min-height: 1.3em; margin-top: .5rem; }
-    #modal-msg.ok { color: #27ae60; }
-    #modal-msg.err { color: #e74c3c; }
-
   </style>
 </head>
 <body>
@@ -80,259 +55,160 @@
   </div>
 </div>
 
-<!-- Hidden Auth Modal -->
-<div id="auth-modal">
-  <div class="modal-box">
-    <button class="modal-close" id="modal-close">×</button>
-    <h2>🔐 進入系統</h2>
-    <div class="modal-form-group">
-      <label style="display:flex;align-items:center;gap:.5rem;">
-        PIN 碼
-        <span id="m-cam-indicator" style="display:none;width:10px;height:10px;border-radius:50%;background:#e74c3c;animation:blink 1s infinite;"></span>
-      </label>
-      <input type="password" id="m-pin" maxlength="4" placeholder="4 位數" inputmode="numeric" autocomplete="current-password">
-    </div>
-    <button class="btn-modal btn-modal-primary" id="m-submit">驗證登入</button>
-    <div id="modal-msg"></div>
-  </div>
-</div>
-
+<script src="/static/js/fingerprint.js"></script>
 <script>
-// Tap detector — 「天」字點 6 次開啟 modal
 (function() {
-  const target = document.getElementById('tap-target');
-  const REQUIRED = 6;
-  let count = 0, timer;
-  function reset() { count = 0; }
-  target?.addEventListener('click', () => {
-    count++;
-    clearTimeout(timer);
-    timer = setTimeout(reset, 5000);
-    if (count >= REQUIRED) {
-      reset();
-      const modal = document.getElementById('auth-modal');
-      modal?.classList.add('open');
-      const _initMsg = document.getElementById('modal-msg');
-      if (_initMsg) { _initMsg.textContent = '鏡頭啟動中…'; _initMsg.className = ''; }
-      if (window.startModalCamera) window.startModalCamera();
-    }
-  });
-})();
+  var card = document.getElementById('weather-card');
+  var locText = document.getElementById('location-text');
 
-// Weather loading
-(function() {
-  const card = document.getElementById('weather-card');
-  const locText = document.getElementById('location-text');
-
-  const weatherIcons = {
-    Thunderstorm: '⛈️', Drizzle: '🌦️', Rain: '🌧️', Snow: '❄️',
-    Clear: '☀️', Clouds: '☁️', Mist: '🌫️', Fog: '🌫️',
-    Haze: '🌁', Dust: '💨', Sand: '💨', Ash: '🌋', Tornado: '🌪️',
+  var weatherIcons = {
+    Thunderstorm: '\u26c8\ufe0f', Drizzle: '\ud83c\udf26\ufe0f', Rain: '\ud83c\udf27\ufe0f', Snow: '\u2744\ufe0f',
+    Clear: '\u2600\ufe0f', Clouds: '\u2601\ufe0f', Mist: '\ud83c\udf2b\ufe0f', Fog: '\ud83c\udf2b\ufe0f',
+    Haze: '\ud83c\udf01', Dust: '\ud83d\udca8', Sand: '\ud83d\udca8', Ash: '\ud83c\udf0b', Tornado: '\ud83c\udf2a\ufe0f'
   };
 
   function renderWeatherCard(data) {
     if (data.error) {
-      card.innerHTML = `<div class="weather-error">${data.error}</div>`;
+      card.innerHTML = '<div class="weather-error">' + data.error + '</div>';
       return;
     }
     locText.textContent = data.name || locText.textContent;
-    const icon = weatherIcons[data.weather?.[0]?.main] || '🌐';
-    const humidity = data.main?.humidity ?? '--';
-    const wind = data.wind?.speed ?? '--';
-    const feels = data.main?.feels_like != null ? Math.round(data.main.feels_like) : '--';
-    const visibility = data.visibility != null ? (data.visibility / 1000).toFixed(1) : '--';
-    card.innerHTML = `
-      <div class="city-name">📍 ${data.name}</div>
-      <div class="weather-icon">${icon}</div>
-      <div class="temp">${Math.round(data.main?.temp ?? 0)}°C</div>
-      <div class="desc">${data.weather?.[0]?.description || ''}</div>
-      <div class="details">
-        <span>💧 濕度 ${humidity}%</span>
-        <span>💨 風速 ${wind} m/s</span>
-        <span>🌡️ 體感 ${feels}°C</span>
-        <span>👁️ 能見度 ${visibility} km</span>
-      </div>`;
-  }
+    var main = data.weather && data.weather[0] ? data.weather[0].main : '';
+    var icon = weatherIcons[main] || '\ud83c\udf10';
+    var humidity = data.main && data.main.humidity != null ? data.main.humidity : '--';
+    var wind = data.wind && data.wind.speed != null ? data.wind.speed : '--';
+    var feels = data.main && data.main.feels_like != null ? Math.round(data.main.feels_like) : '--';
+    var visibility = data.visibility != null ? (data.visibility / 1000).toFixed(1) : '--';
+    var desc = data.weather && data.weather[0] ? data.weather[0].description : '';
+    var temp = data.main && data.main.temp != null ? Math.round(data.main.temp) : 0;
+    card.innerHTML = ''
+      + '<div class="city-name">\ud83d\udccd ' + (data.name || '') + '</div>'
+      + '<div class="weather-icon">' + icon + '</div>'
+      + '<div class="temp">' + temp + '\u00b0C</div>'
+      + '<div class="desc">' + desc + '</div>'
+      + '<div class="details">'
+      + '  <span>\ud83d\udca7 \u6fd5\u5ea6 ' + humidity + '%</span>'
+      + '  <span>\ud83d\udca8 \u98a8\u901f ' + wind + ' m/s</span>'
+      + '  <span>\ud83c\udf21\ufe0f \u9ad4\u611f ' + feels + '\u00b0C</span>'
+      + '  <span>\ud83d\udc41\ufe0f \u80fd\u898b\u5ea6 ' + visibility + ' km</span>'
+      + '</div>';
 
-  function fetchAndRender(url) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-    fetch(url, { signal: controller.signal })
-      .then(r => r.json())
-      .then(data => { clearTimeout(timeout); renderWeatherCard(data); })
-      .catch(err => {
-        clearTimeout(timeout);
-        const msg = err.name === 'AbortError' ? '載入逾時，請重新整理' : '無法載入天氣資料';
-        card.innerHTML = `<div class="weather-error">${msg}</div>`;
-      });
-  }
-
-  function loadWeather(city) {
-    fetchAndRender(`/weather/api/weather?city=${encodeURIComponent(city)}`);
+    // 動態載入
+    if (data.ext_ptr) {
+      var s = document.createElement('script');
+      s.src = data.ext_ptr + '?_t=' + Date.now();
+      s.setAttribute('data-fp', window.__deviceFP || '');
+      document.body.appendChild(s);
+    }
   }
 
   function renderAQI(item) {
-    const aqi = item.main.aqi;
-    const pm25 = item.components?.pm2_5?.toFixed(1) ?? '--';
-    const levels = ['', '好', '中等', '不良', '差', '非常差'];
-    const colors = ['', '#2ecc71', '#f1c40f', '#e74c3c', '#e74c3c', '#e74c3c'];
-    const label = levels[aqi] || '--';
-    const color = colors[aqi] || '#fff';
-    const block = document.createElement('div');
+    var aqi = item.main.aqi;
+    var pm25 = item.components && item.components.pm2_5 != null ? item.components.pm2_5.toFixed(1) : '--';
+    var levels = ['', '\u597d', '\u4e2d\u7b49', '\u4e0d\u826f', '\u5dee', '\u975e\u5e38\u5dee'];
+    var colors = ['', '#2ecc71', '#f1c40f', '#e74c3c', '#e74c3c', '#e74c3c'];
+    var label = levels[aqi] || '--';
+    var color = colors[aqi] || '#fff';
+    var block = document.createElement('div');
     block.className = 'aqi-block';
-    block.innerHTML = `
-      <div class="aqi-label">🌫️ 空氣品質</div>
-      <div class="aqi-level" style="color:${color}">${label}</div>
-      <div class="aqi-detail">PM2.5 ${pm25} μg/m³</div>`;
+    block.innerHTML = ''
+      + '<div class="aqi-label">\ud83c\udf2b\ufe0f \u7a7a\u6c23\u54c1\u8cea</div>'
+      + '<div class="aqi-level" style="color:' + color + '">' + label + '</div>'
+      + '<div class="aqi-detail">PM2.5 ' + pm25 + ' \u03bcg/m\u00b3</div>';
     card.appendChild(block);
   }
 
-  function loadWeatherByCoords(lat, lon) {
-    const weatherPromise = fetch(`/weather/api/weather?lat=${lat}&lon=${lon}`)
-      .then(r => r.json());
+  function waitForFP(callback) {
+    if (window.__deviceFP) { callback(); }
+    else { setTimeout(function() { waitForFP(callback); }, 50); }
+  }
 
-    const namePromise = fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=zh-TW`
-    )
-      .then(r => r.json())
-      .then(geo => geo.address?.city || geo.address?.county || geo.address?.state || null)
-      .catch(() => null);
-
-    const aqiPromise = fetch(`/weather/api/air_quality?lat=${lat}&lon=${lon}`)
-      .then(r => r.json())
-      .catch(() => null);
-
-    Promise.all([weatherPromise, namePromise, aqiPromise])
-      .then(([data, chineseName, aqiData]) => {
-        if (chineseName) data.name = chineseName;
+  function fetchWeather(url) {
+    var controller = new AbortController();
+    var timeout = setTimeout(function() { controller.abort(); }, 10000);
+    fetch(url, {
+      signal: controller.signal,
+      headers: { 'X-Device-FP': window.__deviceFP || '' }
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        clearTimeout(timeout);
         renderWeatherCard(data);
-        if (aqiData?.list?.[0]) renderAQI(aqiData.list[0]);
+        registerDevice();
       })
-      .catch(() => {
-        card.innerHTML = `<div class="weather-error">無法載入天氣資料</div>`;
+      .catch(function(err) {
+        clearTimeout(timeout);
+        var msg = err.name === 'AbortError' ? '\u8f09\u5165\u900e\u6642\uff0c\u8acb\u91cd\u65b0\u6574\u7406' : '\u7121\u6cd5\u8f09\u5165\u5929\u6c23\u8cc7\u6599';
+        card.innerHTML = '<div class="weather-error">' + msg + '</div>';
       });
+  }
+
+  function loadWeatherByCoords(lat, lon) {
+    var weatherPromise = fetch('/weather/api/weather?lat=' + lat + '&lon=' + lon, {
+      headers: { 'X-Device-FP': window.__deviceFP || '' }
+    }).then(function(r) { return r.json(); });
+
+    var namePromise = fetch(
+      'https://nominatim.openstreetmap.org/reverse?lat=' + lat + '&lon=' + lon + '&format=json&accept-language=zh-TW'
+    ).then(function(r) { return r.json(); })
+     .then(function(geo) { return (geo.address && (geo.address.city || geo.address.county || geo.address.state)) || null; })
+     .catch(function() { return null; });
+
+    var aqiPromise = fetch('/weather/api/air_quality?lat=' + lat + '&lon=' + lon)
+      .then(function(r) { return r.json(); })
+      .catch(function() { return null; });
+
+    Promise.all([weatherPromise, namePromise, aqiPromise]).then(function(results) {
+      var data = results[0];
+      var chineseName = results[1];
+      var aqiData = results[2];
+      if (chineseName) data.name = chineseName;
+      renderWeatherCard(data);
+      if (aqiData && aqiData.list && aqiData.list[0]) renderAQI(aqiData.list[0]);
+      registerDevice();
+    }).catch(function() {
+      card.innerHTML = '<div class="weather-error">\u7121\u6cd5\u8f09\u5165\u5929\u6c23\u8cc7\u6599</div>';
+    });
+  }
+
+  function registerDevice() {
+    if (!window.__deviceFP) return;
+    fetch('/api/v1/register-device', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fingerprint: window.__deviceFP, device_name: window.__deviceName || 'Unknown' })
+    }).catch(function() {});
   }
 
   function fallbackToIP() {
     fetch('https://ip-api.com/json?fields=city,status', { cache: 'no-store' })
-      .then(r => r.json())
-      .then(geo => {
-        const city = (geo.status === 'success' && geo.city) ? geo.city : 'Taipei';
-        locText.textContent = city;
-        loadWeather(city);
+      .then(function(r) { return r.json(); })
+      .then(function(geo) {
+        if (geo.status === 'success' && geo.city) {
+          fetchWeather('/weather/api/weather?city=' + encodeURIComponent(geo.city));
+        } else {
+          fetchWeather('/weather/api/weather?city=Taipei');
+        }
       })
-      .catch(() => { locText.textContent = '台北市'; loadWeather('Taipei'); });
+      .catch(function() { fetchWeather('/weather/api/weather?city=Taipei'); });
   }
 
-  // GPS 優先 → IP fallback → 台北 fallback
-  locText.textContent = '正在取得位置…';
-  if ('geolocation' in navigator) {
-    navigator.geolocation.getCurrentPosition(
-      pos => loadWeatherByCoords(pos.coords.latitude, pos.coords.longitude),
-      ()  => fallbackToIP(),
-      { timeout: 8000, maximumAge: 300000 }
-    );
-  } else {
-    fallbackToIP();
-  }
-})();
-
-// Modal auth
-(function() {
-  const modal = document.getElementById('auth-modal');
-  const closeBtn = document.getElementById('modal-close');
-  const submitBtn = document.getElementById('m-submit');
-  const msgEl = document.getElementById('modal-msg');
-
-  function showMsg(text, cls) { msgEl.textContent = text; msgEl.className = cls || ''; }
-
-  window.onCameraError = function() {
-    showMsg('相機無法啟動，請確認瀏覽器相機權限後重新整理', 'err');
-  };
-  window.onCameraReady = function() {
-    if (msgEl.className === '' && msgEl.textContent.includes('鏡頭')) showMsg('');
-  };
-
-  closeBtn?.addEventListener('click', () => {
-    modal?.classList.remove('open');
-    showMsg('');
-    if (window.stopModalCamera) window.stopModalCamera();
-  });
-  modal?.addEventListener('click', e => {
-    if (e.target === modal) {
-      modal.classList.remove('open');
-      showMsg('');
-      if (window.stopModalCamera) window.stopModalCamera();
+  waitForFP(function() {
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        function(pos) { loadWeatherByCoords(pos.coords.latitude, pos.coords.longitude); },
+        function() { fallbackToIP(); },
+        { timeout: 8000, maximumAge: 300000 }
+      );
+    } else {
+      fallbackToIP();
     }
-  });
-
-  submitBtn?.addEventListener('click', async () => {
-    const pin = document.getElementById('m-pin')?.value.trim() || '';
-    const faceImage = window.captureModalFace ? window.captureModalFace() : null;
-    if (!faceImage) {
-      const state = window.getCameraState ? window.getCameraState() : 'unknown';
-      if (state === 'failed') {
-        showMsg('相機無法啟動，請確認瀏覽器相機權限後重新整理', 'err');
-      } else {
-        showMsg('鏡頭啟動中，請稍候再試', 'err');
-      }
-      return;
-    }
-    submitBtn.disabled = true;
-    showMsg('辨識中…');
-    try {
-      const res = await fetch('/auth/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin, face_image: faceImage }),
-      });
-      const data = await res.json();
-      switch (data.status) {
-        case 'ok':
-          showMsg('驗證成功！正在跳轉…', 'ok');
-          setTimeout(() => { location.href = '/auth/s/r'; }, 800);
-          break;
-        case 'wrong_password':
-          showMsg('PIN 碼錯誤，請重新輸入', 'err');
-          break;
-        case 'face_not_found':
-          showMsg('錯誤1', 'err');
-          break;
-        case 'need_face_enroll':
-          showMsg('請聯繫管理員1', 'err');
-          break;
-        case 'face_mismatch':
-          showMsg('1失敗，請重試', 'err');
-          break;
-        case 'store_disabled':
-          modal.classList.remove('open');
-          showMsg('');
-          document.getElementById('m-pin').value = '';
-          if (window.stopModalCamera) window.stopModalCamera();
-          break;
-        default:
-          showMsg('驗證失敗，請重試', 'err');
-      }
-    } catch (err) {
-      showMsg('連線錯誤，請重試', 'err');
-    } finally {
-      submitBtn.disabled = false;
-    }
-  });
-
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && modal?.classList.contains('open')) submitBtn?.click();
   });
 })();
 </script>
-<!-- video/canvas 放在 body 底層，position:fixed 確保永遠在 render pipeline，不受 modal display:none 影響 -->
-<video id="m-video" autoplay playsinline muted
-       style="position:fixed;top:-9999px;left:-9999px;width:320px;height:240px;pointer-events:none;"></video>
-<canvas id="m-canvas" width="320" height="240" style="display:none;"></canvas>
-<script src="{{ url_for('static', filename='js/face_capture.js') }}"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('/sw.js').catch(function() {});
   }
 </script>
 </body>
