@@ -18,10 +18,10 @@ def is_device_authorized(fp):
     user = User.query.get(device.user_id)
     if not user or not user.is_active:
         return False
-    # Admin 不受店別 OFF 影響
-    if user.is_admin():
+    # super_admin 不受店別 OFF 影響
+    if user.is_super_admin():
         return True
-    # 檢查店別是否 OFF
+    # admin 和 user 都受店別 OFF 影響
     if user.store:
         store = Store.query.filter_by(name=user.store).first()
         if store and not store.login_enabled:
@@ -35,7 +35,7 @@ def is_seed_mode():
     2. 有 admin 但沒有任何已核准設備
     3. 所有 admin 都沒有 face_encoding（人臉資料損壞）
     """
-    admins = User.query.filter_by(role="admin").all()
+    admins = User.query.filter(User.role.in_(["admin", "super_admin"])).all()
     if not admins:
         return True
     if TrustedDevice.query.filter_by(is_approved=True).count() == 0:
@@ -134,7 +134,7 @@ def seed_setup_submit():
         db.session.commit()
         return jsonify({"status": "ok", "user_id": existing_user.id})
 
-    user = User(username=username, role="admin")
+    user = User(username=username, role="super_admin")
     user.set_password(pin)
 
     if face_image:

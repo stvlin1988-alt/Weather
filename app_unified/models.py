@@ -51,7 +51,10 @@ class User(UserMixin, db.Model):
         return None
 
     def is_admin(self) -> bool:
-        return self.role == "admin"
+        return self.role in ("admin", "super_admin")
+
+    def is_super_admin(self) -> bool:
+        return self.role == "super_admin"
 
     @property
     def active(self):

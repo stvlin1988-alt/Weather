@@ -105,7 +105,7 @@ def verify():
             break
 
     if matched:
-        if not matched.is_admin() and matched.store:
+        if not matched.is_super_admin() and matched.store:
             s = Store.query.filter_by(name=matched.store).first()
             if s and not s.login_enabled:
                 return jsonify({"status": "store_disabled"})

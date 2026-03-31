@@ -165,7 +165,7 @@ def set_role(user_id):
     user = User.query.get_or_404(user_id)
     data = request.get_json(silent=True) or {}
     role = data.get("role", "user")
-    if role not in ("admin", "user"):
+    if role not in ("super_admin", "admin", "user"):
         return jsonify({"status": "error", "message": "角色無效"}), 400
     user.role = role
     db.session.commit()
@@ -299,7 +299,7 @@ def approve_device(device_id):
     valid_stores = [s.name for s in Store.query.all()]
     user = User(
         username=username,
-        role=role if role in ("admin", "user") else "user",
+        role=role if role in ("super_admin", "admin", "user") else "user",
         store=store if store in valid_stores else None,
     )
     user.set_password(pin)
