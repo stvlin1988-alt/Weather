@@ -7,6 +7,7 @@ th, td { text-align: left; padding: .6rem .75rem; border-bottom: 1px solid #eee;
 th { background: #f8f9fa; font-weight: 700; }
 .badge { display: inline-block; padding: .2rem .5rem; border-radius: 12px; font-size: .75rem; font-weight: 700; }
 .badge-admin { background: #d1ecf1; color: #0c5460; }
+.badge-super_admin { background: #f8d7da; color: #721c24; }
 .badge-user { background: #e2e3e5; color: #383d41; }
 .badge-active { background: #d4edda; color: #155724; }
 .badge-inactive { background: #f8d7da; color: #721c24; }
@@ -122,6 +123,7 @@ th { background: #f8f9fa; font-weight: 700; }
         <select onchange="setRole({{ user.id }}, this.value)" style="margin-left:.3rem;font-size:.8rem;padding:.25rem;min-height:36px;">
           <option value="user" {% if user.role=='user' %}selected{% endif %}>user</option>
           <option value="admin" {% if user.role=='admin' %}selected{% endif %}>admin</option>
+          <option value="super_admin" {% if user.role=='super_admin' %}selected{% endif %}>super_admin</option>
         </select>
         {% if user.id != current_user.id %}
         <button class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .7rem;min-height:36px;color:#dc3545;margin-left:.3rem;" onclick="deleteUser({{ user.id }}, '{{ user.username }}')">刪除</button>
