@@ -56,6 +56,26 @@
   <a href="{{ url_for('notes.new_note') }}" class="btn btn-primary" style="margin-left:auto;">+ 新增筆記</a>
 </div>
 
+<div class="card" style="margin-bottom:1rem;">
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
+    <strong style="font-size:.95rem;">🤖 AI 摘要</strong>
+    <select id="ai-store-select" style="font-size:.85rem;padding:.3rem .5rem;border-radius:6px;border:1px solid #ddd;min-height:36px;">
+      <option value="all">全店</option>
+      {% for s in stores %}
+      <option value="{{ s }}">{{ s }} 店</option>
+      {% endfor %}
+    </select>
+    <select id="ai-days-select" style="font-size:.85rem;padding:.3rem .5rem;border-radius:6px;border:1px solid #ddd;min-height:36px;">
+      <option value="1">近 1 天</option>
+      <option value="3">近 3 天</option>
+      <option value="7" selected>近 1 週</option>
+    </select>
+    <button class="btn btn-primary" id="btn-ai-summary" onclick="generateSummary()" style="font-size:.85rem;padding:.4rem .8rem;">產生摘要</button>
+    <span id="ai-status" style="font-size:.8rem;color:#666;"></span>
+  </div>
+  <div id="ai-summary-output" style="display:none;background:#f8f9fa;border:1px solid #e0e0e0;border-radius:8px;padding:1rem;margin-top:.75rem;white-space:pre-wrap;font-size:.88rem;line-height:1.6;max-height:400px;overflow-y:auto;"></div>
+</div>
+
 <div class="store-tabs">
   <a href="{{ url_for('notes.index', status=current_status, range=current_range) }}" class="store-tab {% if not current_store %}active{% endif %}" data-store="">全部</a>
   {% for s in stores %}
@@ -128,6 +148,35 @@
 </div>
 {% endblock %}
 {% block scripts %}
+<script>
+function generateSummary() {
+  var store = document.getElementById('ai-store-select').value;
+  var days = document.getElementById('ai-days-select').value;
+  var btn = document.getElementById('btn-ai-summary');
+  var statusEl = document.getElementById('ai-status');
+  var outputEl = document.getElementById('ai-summary-output');
+  btn.disabled = true;
+  statusEl.textContent = 'AI 整理中…（首次可能需要數分鐘）';
+  outputEl.style.display = 'none';
+  fetch('/notes/ai/summary', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ store: store, days: parseInt(days) })
+  }).then(function(res) { return res.json(); }).then(function(data) {
+    if (data.status === 'ok') {
+      outputEl.textContent = data.summary;
+      outputEl.style.display = 'block';
+      statusEl.textContent = '';
+    } else {
+      statusEl.textContent = data.message || '錯誤';
+    }
+  }).catch(function(e) {
+    statusEl.textContent = '連線錯誤：' + e.message;
+  }).finally(function() {
+    btn.disabled = false;
+  });
+}
+</script>
 <script src="{{ url_for('static', filename='js/camera.js') }}"></script>
 <script>
 const enrollCam = new Camera('enroll-video', 'enroll-canvas');
