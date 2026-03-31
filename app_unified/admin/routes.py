@@ -36,7 +36,7 @@ def call_llm(prompt: str, max_tokens: int = 2048) -> str:
                     "max_tokens": max_tokens,
                     "stream": False,
                 },
-                timeout=120,
+                timeout=300,
             )
             resp.raise_for_status()
             return resp.json()["choices"][0]["message"]["content"]
@@ -50,7 +50,7 @@ def call_llm(prompt: str, max_tokens: int = 2048) -> str:
                 "messages": [{"role": "user", "content": prompt}],
                 "stream": False,
             },
-            timeout=120,
+            timeout=300,
         )
         resp.raise_for_status()
         return resp.json()["message"]["content"]
