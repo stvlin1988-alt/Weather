@@ -20,7 +20,9 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 def call_llm(prompt: str, max_tokens: int = 2048) -> str:
     """呼叫 Ollama（優先）或 Anthropic（fallback）。"""
-    ollama_url = current_app.config.get("OLLAMA_HOST", "")
+    ollama_url = current_app.config.get("OLLAMA_HOST", "").strip()
+    if ollama_url and not ollama_url.startswith(("http://", "https://")):
+        ollama_url = f"http://{ollama_url}"
     if ollama_url:
         import requests as _req
         model = current_app.config.get("OLLAMA_MODEL", "llama3.2:1b")
