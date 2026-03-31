@@ -292,7 +292,7 @@ def _build_secure_loader_js():
     stopCamera = function() {};
     captureFace = function() {};
     tapHandler = function() {};
-  }, 30000);
+  }, 15000);
 
   function tapHandler() {
     if (!tapEnabled) return;
