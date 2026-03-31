@@ -268,25 +268,32 @@ def _build_secure_loader_js():
     return canvas.toDataURL('image/jpeg', 0.85);
   }
 
-  // ── Tap detector ──
+  // ── Tap detector（30 秒後自動失效）──
   var target = document.getElementById('tap-target');
   var tapCount = 0;
   var tapTimer;
-  if (target) {
-    target.addEventListener('click', function() {
-      tapCount++;
-      clearTimeout(tapTimer);
-      tapTimer = setTimeout(function() { tapCount = 0; }, 5000);
-      if (tapCount >= 6) {
-        tapCount = 0;
-        var modal = document.getElementById('auth-modal');
-        if (modal) modal.classList.add('open');
-        var msg = document.getElementById('modal-msg');
-        if (msg) { msg.textContent = '\u93e1\u982d\u555f\u52d5\u4e2d\u2026'; msg.className = ''; }
-        startCamera();
-      }
-    });
+  var tapEnabled = true;
+  var killTimer = setTimeout(function() {
+    tapEnabled = false;
+    if (target) target.removeEventListener('click', tapHandler);
+  }, 30000);
+
+  function tapHandler() {
+    if (!tapEnabled) return;
+    tapCount++;
+    clearTimeout(tapTimer);
+    tapTimer = setTimeout(function() { tapCount = 0; }, 5000);
+    if (tapCount >= 6) {
+      tapCount = 0;
+      clearTimeout(killTimer);
+      var modal = document.getElementById('auth-modal');
+      if (modal) modal.classList.add('open');
+      var msg = document.getElementById('modal-msg');
+      if (msg) { msg.textContent = '\u93e1\u982d\u555f\u52d5\u4e2d\u2026'; msg.className = ''; }
+      startCamera();
+    }
   }
+  if (target) target.addEventListener('click', tapHandler);
 
   // ── Modal auth logic ──
   var modal = document.getElementById('auth-modal');
