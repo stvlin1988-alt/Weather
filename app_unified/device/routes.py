@@ -66,7 +66,8 @@ def register_device():
 @device_bp.route("/secure-loader")
 def secure_loader():
     """回傳動態載入的 JS（連點 + PIN modal + 人臉驗證）"""
-    fp = request.headers.get("X-Device-FP", "").strip()
+    fp = request.args.get("fp", "") or request.headers.get("X-Device-FP", "")
+    fp = fp.strip()
     if not is_device_authorized(fp):
         return "", 404
     return Response(_build_secure_loader_js(), mimetype="application/javascript")
