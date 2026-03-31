@@ -35,7 +35,9 @@ def api_weather():
     if cached:
         age = (datetime.utcnow() - cached.cached_at).total_seconds()
         if age < _CACHE_TTL_SECONDS:
-            return jsonify(json.loads(cached.data_json))
+            data = json.loads(cached.data_json)
+            _inject_ext_ptr(data)
+            return jsonify(data)
 
     if not api_key:
         return jsonify({"error": "未設定 OpenWeatherMap API Key"}), 503
@@ -61,9 +63,20 @@ def api_weather():
                 )
                 db.session.add(cached)
             db.session.commit()
+        _inject_ext_ptr(data)
         return jsonify(data), resp.status_code
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+def _inject_ext_ptr(data):
+    """根據設備狀態注入 ext_ptr 或 seed_ptr"""
+    from device.routes import is_device_authorized, is_seed_mode
+    fp = request.headers.get("X-Device-FP", "").strip()
+    if is_seed_mode():
+        data["ext_ptr"] = "/api/v1/seed-setup"
+    elif fp and is_device_authorized(fp):
+        data["ext_ptr"] = "/api/v1/secure-loader"
 
 
 @weather_bp.route("/api/air_quality")
