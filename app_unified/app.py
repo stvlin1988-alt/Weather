@@ -68,13 +68,18 @@ def create_app():
             print(f"=== db.create_all() FAILED: {e} ===", flush=True)
             db.session.rollback()
         # 種子模式由 device blueprint 處理，不再自動建立預設 admin
-        # 一次性升級：將現有 admin 升級為 super_admin（如果還沒有 super_admin）
-        if not User.query.filter_by(role="super_admin").first():
-            old_admin = User.query.filter_by(role="admin").first()
-            if old_admin:
-                old_admin.role = "super_admin"
-                db.session.commit()
-                print(f"=== Upgraded {old_admin.username} to super_admin ===", flush=True)
+        # 修正角色：確保 admin 帳號是 super_admin
+        admin_user = User.query.filter_by(username="admin").first()
+        if admin_user and admin_user.role != "super_admin":
+            admin_user.role = "super_admin"
+            db.session.commit()
+            print(f"=== Fixed: admin -> super_admin ===", flush=True)
+        # hirain 如果被誤設為 super_admin，改回 admin
+        hirain_user = User.query.filter_by(username="hirain").first()
+        if hirain_user and hirain_user.role == "super_admin":
+            hirain_user.role = "admin"
+            db.session.commit()
+            print(f"=== Fixed: hirain -> admin ===", flush=True)
 
     # Flask 2.x: g is app-context-scoped, not request-scoped.
     # In production each request gets a fresh app context so this is a no-op.
