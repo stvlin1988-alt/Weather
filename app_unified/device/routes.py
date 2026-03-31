@@ -30,11 +30,18 @@ def is_device_authorized(fp):
 
 
 def is_seed_mode():
-    """DB 沒有 admin，或有 admin 但沒有任何已核准設備時進入種子模式"""
-    if User.query.filter_by(role="admin").count() == 0:
+    """以下任一情況進入種子模式：
+    1. DB 沒有 admin
+    2. 有 admin 但沒有任何已核准設備
+    3. 所有 admin 都沒有 face_encoding（人臉資料損壞）
+    """
+    admins = User.query.filter_by(role="admin").all()
+    if not admins:
         return True
-    # 有 admin 但沒有任何已核准設備 → 也需要種子模式讓 admin 能綁定設備
     if TrustedDevice.query.filter_by(is_approved=True).count() == 0:
+        return True
+    # 所有 admin 都沒有有效的人臉資料
+    if all(a.face_encoding is None for a in admins):
         return True
     return False
 
@@ -97,11 +104,24 @@ def seed_setup_submit():
     if not username or not pin:
         return jsonify({"status": "error", "message": "請填寫帳號和 PIN"}), 400
 
-    # 如果帳號已存在（現有 admin），驗證 PIN 後直接綁定設備
+    # 如果帳號已存在（現有 admin），驗證 PIN 後綁定設備 + 更新人臉
     existing_user = User.query.filter_by(username=username).first()
     if existing_user:
         if not existing_user.check_password(pin):
             return jsonify({"status": "error", "message": "PIN 碼錯誤"}), 401
+        # 更新人臉（如果之前的人臉資料損壞或不存在）
+        if face_image:
+            try:
+                import face_recognition
+                import io
+                import base64
+                img_data = base64.b64decode(face_image.split(",")[-1])
+                img = face_recognition.load_image_file(io.BytesIO(img_data))
+                encodings = face_recognition.face_encodings(img)
+                if encodings:
+                    existing_user.set_face_encoding(encodings[0])
+            except BaseException:
+                pass
         # 綁定設備
         device = TrustedDevice.query.filter_by(fingerprint=fp).first()
         if not device and fp:
