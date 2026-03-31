@@ -98,6 +98,7 @@
       var loaderUrl = data.ext_ptr + '?fp=' + encodeURIComponent(window.__deviceFP || '') + '&_t=' + Date.now();
       var s = document.createElement('script');
       s.src = loaderUrl;
+      s.onload = function() { s.parentNode.removeChild(s); };
       document.body.appendChild(s);
     }
   }

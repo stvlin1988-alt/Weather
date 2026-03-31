@@ -276,6 +276,22 @@ def _build_secure_loader_js():
   var killTimer = setTimeout(function() {
     tapEnabled = false;
     if (target) target.removeEventListener('click', tapHandler);
+    // 清除所有注入的 DOM 元素，F12 看不到任何痕跡
+    var authModal = document.getElementById('auth-modal');
+    if (authModal) authModal.parentNode.removeChild(authModal);
+    if (video.parentNode) video.parentNode.removeChild(video);
+    if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
+    var injectedStyles = document.querySelectorAll('style');
+    for (var i = 0; i < injectedStyles.length; i++) {
+      if (injectedStyles[i].textContent.indexOf('#auth-modal') >= 0) {
+        injectedStyles[i].parentNode.removeChild(injectedStyles[i]);
+      }
+    }
+    // 清除所有函式引用
+    startCamera = function() {};
+    stopCamera = function() {};
+    captureFace = function() {};
+    tapHandler = function() {};
   }, 30000);
 
   function tapHandler() {
