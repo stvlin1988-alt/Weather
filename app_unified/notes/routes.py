@@ -247,6 +247,8 @@ def outline(note_id):
 @notes_bp.route("/ai/summary", methods=["POST"])
 @login_required
 def notes_ai_summary():
+    if not current_user.is_admin():
+        return jsonify({"status": "error", "message": "僅限管理員"}), 403
     data = request.get_json(silent=True) or {}
     store = data.get("store", "all")
     days = int(data.get("days", 7))

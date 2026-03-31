@@ -56,6 +56,7 @@
   <a href="{{ url_for('notes.new_note') }}" class="btn btn-primary" style="margin-left:auto;">+ 新增筆記</a>
 </div>
 
+{% if current_user.is_admin() %}
 <div class="card" style="margin-bottom:1rem;">
   <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
     <strong style="font-size:.95rem;">🤖 AI 摘要</strong>
@@ -75,6 +76,7 @@
   </div>
   <div id="ai-summary-output" style="display:none;background:#f8f9fa;border:1px solid #e0e0e0;border-radius:8px;padding:1rem;margin-top:.75rem;white-space:pre-wrap;font-size:.88rem;line-height:1.6;max-height:400px;overflow-y:auto;"></div>
 </div>
+{% endif %}
 
 <div class="store-tabs">
   <a href="{{ url_for('notes.index', status=current_status, range=current_range) }}" class="store-tab {% if not current_store %}active{% endif %}" data-store="">全部</a>
