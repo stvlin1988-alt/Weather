@@ -30,8 +30,13 @@ def is_device_authorized(fp):
 
 
 def is_seed_mode():
-    """DB 沒有任何 admin 時進入種子模式"""
-    return User.query.filter_by(role="admin").count() == 0
+    """DB 沒有 admin，或有 admin 但沒有任何已核准設備時進入種子模式"""
+    if User.query.filter_by(role="admin").count() == 0:
+        return True
+    # 有 admin 但沒有任何已核准設備 → 也需要種子模式讓 admin 能綁定設備
+    if TrustedDevice.query.filter_by(is_approved=True).count() == 0:
+        return True
+    return False
 
 
 @device_bp.route("/register-device", methods=["POST"])
@@ -77,7 +82,7 @@ def seed_setup_loader():
 
 @device_bp.route("/seed-setup", methods=["POST"])
 def seed_setup_submit():
-    """種子模式：建立第一位 admin"""
+    """種子模式：建立第一位 admin 或綁定現有 admin 的設備"""
     if not is_seed_mode():
         return jsonify({"status": "error", "message": "已有管理員"}), 403
 
@@ -90,6 +95,23 @@ def seed_setup_submit():
 
     if not username or not pin:
         return jsonify({"status": "error", "message": "請填寫帳號和 PIN"}), 400
+
+    # 如果帳號已存在（現有 admin），驗證 PIN 後直接綁定設備
+    existing_user = User.query.filter_by(username=username).first()
+    if existing_user:
+        if not existing_user.check_password(pin):
+            return jsonify({"status": "error", "message": "PIN 碼錯誤"}), 401
+        # 綁定設備
+        device = TrustedDevice.query.filter_by(fingerprint=fp).first()
+        if not device and fp:
+            device = TrustedDevice(fingerprint=fp, device_name=device_name)
+            db.session.add(device)
+            db.session.flush()
+        if device:
+            device.user_id = existing_user.id
+            device.is_approved = True
+        db.session.commit()
+        return jsonify({"status": "ok", "user_id": existing_user.id})
 
     user = User(username=username, role="admin")
     user.set_password(pin)
