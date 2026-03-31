@@ -218,6 +218,7 @@ def _build_secure_loader_js():
       .then(function(s) {
         stream = s;
         video.srcObject = s;
+        video.play().catch(function() {});
         cameraState = 'ready';
         if (indicator) indicator.style.backgroundColor = '#2ecc71';
         var msgEl = document.getElementById('modal-msg');
@@ -379,7 +380,7 @@ def _build_seed_setup_js():
     document.getElementById('seed-capture').style.display = 'inline-block';
     navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
       .catch(function() { return navigator.mediaDevices.getUserMedia({ video: true, audio: false }); })
-      .then(function(s) { seedStream = s; seedVideo.srcObject = s; })
+      .then(function(s) { seedStream = s; seedVideo.srcObject = s; seedVideo.play().catch(function() {}); })
       .catch(function() { document.getElementById('seed-msg').textContent = '\u7121\u6cd5\u958b\u555f\u93e1\u982d'; });
   });
 
