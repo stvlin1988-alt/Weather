@@ -152,6 +152,52 @@ th { background: #f8f9fa; font-weight: 700; }
   </table>
 </div>
 <div class="card" style="margin-top:1rem;">
+  <h3>設備管理</h3>
+  <button class="btn btn-secondary" onclick="loadDevices()" style="margin-top:.5rem;">載入設備列表</button>
+  <table id="devices-table" style="margin-top:.75rem;display:none;">
+    <thead><tr><th>設備</th><th>狀態</th><th>綁定帳號</th><th>店別</th><th>首次出現</th><th>最後上線</th><th>操作</th></tr></thead>
+    <tbody id="devices-tbody"></tbody>
+  </table>
+</div>
+
+<!-- 設備核准 Modal -->
+<div id="approve-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;">
+  <div class="card" style="max-width:420px;width:90%;position:relative;">
+    <button onclick="document.getElementById('approve-modal').style.display='none'" style="position:absolute;top:.5rem;right:.75rem;background:none;border:none;font-size:1.4rem;cursor:pointer;min-width:44px;min-height:44px;">&times;</button>
+    <h3 style="margin-bottom:1rem;">核准設備並建立帳號</h3>
+    <input type="hidden" id="approve-device-id">
+    <div style="margin-bottom:.5rem;"><label style="font-size:.85rem;font-weight:600;">帳號名稱</label><input type="text" id="approve-username" class="form-control"></div>
+    <div style="margin-bottom:.5rem;"><label style="font-size:.85rem;font-weight:600;">PIN 碼（4位數）</label><input type="password" id="approve-pin" maxlength="4" inputmode="numeric" class="form-control"></div>
+    <div style="margin-bottom:.5rem;">
+      <label style="font-size:.85rem;font-weight:600;">店別</label>
+      <select id="approve-store" class="form-control">
+        <option value="">— 請選擇 —</option>
+        {% for s in stores %}
+        <option value="{{ s }}">{{ s }} 店</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="margin-bottom:.5rem;">
+      <label style="font-size:.85rem;font-weight:600;">權限</label>
+      <select id="approve-role" class="form-control">
+        <option value="user">一般使用者</option>
+        <option value="admin">管理員</option>
+      </select>
+    </div>
+    <div style="margin-bottom:.5rem;">
+      <label style="font-size:.85rem;font-weight:600;">人臉登錄</label>
+      <button class="btn btn-secondary" onclick="startApproveCamera()" id="approve-cam-btn" style="font-size:.85rem;">開啟鏡頭</button>
+    </div>
+    <video id="approve-video" autoplay playsinline muted style="width:100%;border-radius:6px;background:#000;display:none;margin-bottom:.5rem;"></video>
+    <canvas id="approve-canvas" style="display:none;"></canvas>
+    <button class="btn btn-secondary" id="approve-capture-btn" style="display:none;font-size:.85rem;margin-bottom:.5rem;" onclick="captureApproveFace()">拍照</button>
+    <img id="approve-preview" style="display:none;width:80px;border-radius:6px;border:2px solid #27ae60;margin-bottom:.5rem;">
+    <button class="btn btn-primary" onclick="submitApprove()" style="width:100%;">核准並建立帳號</button>
+    <div id="approve-msg" style="font-size:.9rem;margin-top:.5rem;min-height:1.2em;"></div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:1rem;">
   <h3>店家管理</h3>
   <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-top:.75rem;">
     <input id="new-store-name" type="text" class="form-control" placeholder="店名（如 A）" style="max-width:120px;font-size:.9rem;">
@@ -377,6 +423,124 @@ async function deleteUser(id, username) {
   } else {
     alert(data.message || '刪除失敗');
   }
+}
+
+// ── 設備管理 ──
+var approveStream = null;
+var approveFaceImage = null;
+
+function loadDevices() {
+  fetch('/admin/devices').then(function(r) { return r.json(); }).then(function(devices) {
+    document.getElementById('devices-table').style.display = 'table';
+    var tbody = document.getElementById('devices-tbody');
+    tbody.innerHTML = devices.map(function(d) {
+      var statusBadge = d.is_revoked
+        ? '<span class="badge badge-inactive">已掛失</span>'
+        : (d.is_approved ? '<span class="badge badge-active">已核准</span>' : '<span class="badge badge-user">待核准</span>');
+      var actions = '';
+      if (!d.is_approved && !d.is_revoked) {
+        actions += '<button class="btn btn-primary" style="font-size:.8rem;padding:.3rem .7rem;" onclick="openApproveModal(' + d.id + ')">設定並核准</button>';
+      }
+      if (d.is_approved && !d.is_revoked) {
+        actions += '<button class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .7rem;color:#dc3545;" onclick="revokeDevice(' + d.id + ')">掛失</button>';
+      }
+      if (d.is_revoked) {
+        actions += '<button class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .7rem;" onclick="unrevokeDevice(' + d.id + ')">恢復</button>';
+      }
+      actions += ' <button class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .7rem;color:#dc3545;" onclick="deleteDevice(' + d.id + ')">刪除</button>';
+      return '<tr>'
+        + '<td>' + d.device_name + '</td>'
+        + '<td>' + statusBadge + '</td>'
+        + '<td>' + (d.username || '—') + '</td>'
+        + '<td>' + (d.store || '—') + '</td>'
+        + '<td style="font-size:.8rem;">' + d.created_at + '</td>'
+        + '<td style="font-size:.8rem;">' + d.last_seen_at + '</td>'
+        + '<td>' + actions + '</td>'
+        + '</tr>';
+    }).join('');
+  });
+}
+
+function openApproveModal(deviceId) {
+  document.getElementById('approve-device-id').value = deviceId;
+  document.getElementById('approve-username').value = '';
+  document.getElementById('approve-pin').value = '';
+  document.getElementById('approve-store').value = '';
+  document.getElementById('approve-role').value = 'user';
+  document.getElementById('approve-msg').textContent = '';
+  document.getElementById('approve-preview').style.display = 'none';
+  document.getElementById('approve-modal').style.display = 'flex';
+  approveFaceImage = null;
+}
+
+function startApproveCamera() {
+  var video = document.getElementById('approve-video');
+  video.style.display = 'block';
+  document.getElementById('approve-capture-btn').style.display = 'inline-block';
+  document.getElementById('approve-cam-btn').disabled = true;
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+    .catch(function() { return navigator.mediaDevices.getUserMedia({ video: true, audio: false }); })
+    .then(function(s) { approveStream = s; video.srcObject = s; })
+    .catch(function() { document.getElementById('approve-msg').textContent = '無法開啟鏡頭'; });
+}
+
+function captureApproveFace() {
+  var video = document.getElementById('approve-video');
+  var canvas = document.getElementById('approve-canvas');
+  if (!approveStream || video.readyState < 2) return;
+  canvas.width = video.videoWidth || 640;
+  canvas.height = video.videoHeight || 480;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  approveFaceImage = canvas.toDataURL('image/jpeg', 0.85);
+  var preview = document.getElementById('approve-preview');
+  preview.src = approveFaceImage;
+  preview.style.display = 'block';
+}
+
+function submitApprove() {
+  var deviceId = document.getElementById('approve-device-id').value;
+  var username = document.getElementById('approve-username').value.trim();
+  var pin = document.getElementById('approve-pin').value.trim();
+  var store = document.getElementById('approve-store').value;
+  var role = document.getElementById('approve-role').value;
+  var msgEl = document.getElementById('approve-msg');
+  if (!username || !pin) { msgEl.textContent = '請填寫帳號和 PIN'; msgEl.style.color = '#dc3545'; return; }
+  if (!approveFaceImage) { msgEl.textContent = '請先拍攝人臉'; msgEl.style.color = '#dc3545'; return; }
+  msgEl.textContent = '處理中…';
+  msgEl.style.color = '#666';
+  fetch('/admin/devices/' + deviceId + '/approve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: username, pin: pin, store: store, role: role, face_image: approveFaceImage })
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.status === 'ok') {
+      msgEl.textContent = '帳號建立並核准成功！';
+      msgEl.style.color = '#28a745';
+      if (approveStream) { approveStream.getTracks().forEach(function(t) { t.stop(); }); approveStream = null; }
+      setTimeout(function() {
+        document.getElementById('approve-modal').style.display = 'none';
+        loadDevices();
+        location.reload();
+      }, 1200);
+    } else {
+      msgEl.textContent = data.message || '操作失敗';
+      msgEl.style.color = '#dc3545';
+    }
+  }).catch(function() { msgEl.textContent = '連線錯誤'; msgEl.style.color = '#dc3545'; });
+}
+
+function revokeDevice(id) {
+  if (!confirm('確定要掛失此設備？')) return;
+  fetch('/admin/devices/' + id + '/revoke', { method: 'POST' }).then(function() { loadDevices(); });
+}
+
+function unrevokeDevice(id) {
+  fetch('/admin/devices/' + id + '/unrevoke', { method: 'POST' }).then(function() { loadDevices(); });
+}
+
+function deleteDevice(id) {
+  if (!confirm('確定要刪除此設備？')) return;
+  fetch('/admin/devices/' + id, { method: 'DELETE' }).then(function() { loadDevices(); });
 }
 
 // 頁面載入時自動載入店家列表

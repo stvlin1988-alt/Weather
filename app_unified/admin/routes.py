@@ -252,6 +252,113 @@ def store_summary():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+# ── 設備管理 ──────────────────────────────────────────────
+
+@admin_bp.route("/devices", methods=["GET"])
+@login_required
+def list_devices():
+    require_admin()
+    from models import TrustedDevice
+    devices = TrustedDevice.query.order_by(TrustedDevice.created_at.desc()).all()
+    return jsonify([{
+        "id": d.id,
+        "fingerprint": d.fingerprint[:12] + "...",
+        "device_name": d.device_name,
+        "is_approved": d.is_approved,
+        "is_revoked": d.is_revoked,
+        "user_id": d.user_id,
+        "username": d.user.username if d.user else None,
+        "store": d.user.store if d.user else None,
+        "role": d.user.role if d.user else None,
+        "created_at": d.created_at.strftime("%Y/%m/%d %H:%M") if d.created_at else "",
+        "last_seen_at": d.last_seen_at.strftime("%Y/%m/%d %H:%M") if d.last_seen_at else "",
+    } for d in devices])
+
+
+@admin_bp.route("/devices/<int:device_id>/approve", methods=["POST"])
+@login_required
+def approve_device(device_id):
+    require_admin()
+    from models import TrustedDevice
+    import io, base64
+    device = TrustedDevice.query.get_or_404(device_id)
+    data = request.get_json(silent=True) or {}
+
+    username = (data.get("username") or "").strip()
+    pin = str(data.get("pin") or "").strip()
+    store = (data.get("store") or "").strip()
+    role = data.get("role", "user")
+    face_image = data.get("face_image")
+
+    if not username or not pin:
+        return jsonify({"status": "error", "message": "請填寫帳號和 PIN"}), 400
+
+    if User.query.filter_by(username=username).first():
+        return jsonify({"status": "error", "message": "帳號已存在"}), 409
+
+    valid_stores = [s.name for s in Store.query.all()]
+    user = User(
+        username=username,
+        role=role if role in ("admin", "user") else "user",
+        store=store if store in valid_stores else None,
+    )
+    user.set_password(pin)
+
+    if face_image:
+        try:
+            import face_recognition
+            img_data = base64.b64decode(face_image.split(",")[-1])
+            img = face_recognition.load_image_file(io.BytesIO(img_data))
+            encodings = face_recognition.face_encodings(img)
+            if encodings:
+                user.set_face_encoding(encodings[0])
+        except BaseException:
+            pass
+
+    db.session.add(user)
+    db.session.flush()
+
+    device.user_id = user.id
+    device.is_approved = True
+    device.is_revoked = False
+    db.session.commit()
+
+    return jsonify({"status": "ok", "user_id": user.id})
+
+
+@admin_bp.route("/devices/<int:device_id>/revoke", methods=["POST"])
+@login_required
+def revoke_device(device_id):
+    require_admin()
+    from models import TrustedDevice
+    device = TrustedDevice.query.get_or_404(device_id)
+    device.is_revoked = True
+    db.session.commit()
+    return jsonify({"status": "ok"})
+
+
+@admin_bp.route("/devices/<int:device_id>/unrevoke", methods=["POST"])
+@login_required
+def unrevoke_device(device_id):
+    require_admin()
+    from models import TrustedDevice
+    device = TrustedDevice.query.get_or_404(device_id)
+    device.is_revoked = False
+    db.session.commit()
+    return jsonify({"status": "ok"})
+
+
+@admin_bp.route("/devices/<int:device_id>", methods=["DELETE"])
+@login_required
+def delete_device(device_id):
+    require_admin()
+    from models import TrustedDevice
+    device = TrustedDevice.query.get_or_404(device_id)
+    db.session.delete(device)
+    db.session.commit()
+    return jsonify({"status": "ok"})
+
+
 # ── 店家管理 ──────────────────────────────────────────────
 
 @admin_bp.route("/stores", methods=["GET"])
