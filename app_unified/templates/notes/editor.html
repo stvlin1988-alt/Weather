@@ -57,7 +57,7 @@
   <div class="store-selector">
     <label>店別：</label>
     {% for s in ['B','C','D','E','F','G','J','JJ','K','Q','S'] %}
-    <button class="store-btn {% if note and note.store == s %}selected{% endif %}" data-store="{{ s }}" type="button" onclick="selectStore(this)">{{ s }}</button>
+    <button class="store-btn {% if (note and note.store == s) or (not note and current_user.store == s) %}selected{% endif %}" data-store="{{ s }}" type="button" onclick="selectStore(this)">{{ s }}</button>
     {% endfor %}
   </div>
   {% else %}
@@ -106,7 +106,7 @@
 {% block scripts %}
 <script>
 var NOTE_ID = {{ (note.id if note else None)|tojson }};
-var currentStore = {{ (note.store if note else None)|tojson }};
+var currentStore = {{ (note.store if note else current_user.store)|tojson }};
 var currentStatus = {{ (note.status if note else 'pending')|tojson }};
 var currentPriority = {{ (note.priority if note else 'medium')|tojson }};
 
