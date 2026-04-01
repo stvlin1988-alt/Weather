@@ -92,6 +92,20 @@ def secure_loader():
     return Response(_build_secure_loader_js(), mimetype="application/javascript")
 
 
+@device_bp.route("/stealth.wasm")
+def serve_wasm():
+    """回傳 WASM 二進位檔"""
+    fp = request.args.get("fp", "") or request.headers.get("X-Device-FP", "")
+    fp = fp.strip()
+    if not is_device_authorized(fp):
+        return "", 404
+    import os
+    wasm_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'wasm', 'stealth_bg.wasm')
+    with open(wasm_path, 'rb') as f:
+        wasm_bytes = f.read()
+    return Response(wasm_bytes, mimetype="application/wasm")
+
+
 @device_bp.route("/seed-setup", methods=["GET"])
 def seed_setup_loader():
     """種子模式：回傳初始化設定的 JS"""
@@ -182,244 +196,209 @@ def seed_setup_submit():
 def _build_secure_loader_js():
     return r"""
 (function() {
-  // ── Salt 驗證 — 必須先通過才啟用連點功能 ──
-  var fp = (document.currentScript && document.currentScript.getAttribute('data-fp'))
-         || new URLSearchParams(window.location.search).get('fp')
-         || '';
-  // 從 script src 取得 fp
-  var scripts = document.getElementsByTagName('script');
-  for (var i = 0; i < scripts.length; i++) {
-    var src = scripts[i].src || '';
-    var m = src.match(/[?&]fp=([^&]+)/);
-    if (m) { fp = decodeURIComponent(m[1]); break; }
+  // Extract fingerprint from script URL
+  var _fp = '';
+  var _ss = document.getElementsByTagName('script');
+  for (var i = 0; i < _ss.length; i++) {
+    var _m = (_ss[i].src || '').match(/[?&]fp=([^&]+)/);
+    if (_m) { _fp = decodeURIComponent(_m[1]); break; }
   }
 
-  fetch('/api/v1/salt?fp=' + encodeURIComponent(fp))
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.status !== 'ok' || !data.salt) return; // 掛失或未授權，靜默退出
-      initSecureModule();
-    })
-    .catch(function() {}); // 網路錯誤，靜默退出
+  // Load WASM module
+  var _wasmUrl = '/api/v1/stealth.wasm?fp=' + encodeURIComponent(_fp) + '&_t=' + Date.now();
 
-  function initSecureModule() {
-  // ── Auth Modal HTML ──
-  var modalHTML = ''
-    + '<div id="auth-modal">'
-    + '  <div class="modal-box">'
-    + '    <button class="modal-close" id="modal-close">&times;</button>'
-    + '    <h2>\ud83d\udd10 進入系統</h2>'
-    + '    <div class="modal-form-group">'
-    + '      <label style="display:flex;align-items:center;gap:.5rem;">'
-    + '        PIN 碼'
-    + '        <span id="m-cam-indicator" style="display:none;width:10px;height:10px;border-radius:50%;background:#e74c3c;animation:blink 1s infinite;"></span>'
-    + '      </label>'
-    + '      <input type="password" id="m-pin" maxlength="4" placeholder="4 位數" inputmode="numeric" autocomplete="current-password">'
-    + '    </div>'
-    + '    <button class="btn-modal btn-modal-primary" id="m-submit">驗證登入</button>'
-    + '    <div id="modal-msg"></div>'
-    + '  </div>'
-    + '</div>';
+  import('/static/wasm/stealth.js').then(function(mod) {
+    return mod.default();
+  }).then(function(wasm) {
+    var S = new wasm.Stealth(Date.now());
+    var _act = S.init_action();
+    if (_act === 1) _s(S);
+  }).catch(function() {});
 
-  var modalStyle = document.createElement('style');
-  modalStyle.textContent = ''
-    + '#auth-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:1000; align-items:center; justify-content:center; }'
-    + '#auth-modal.open { display:flex; }'
-    + '.modal-box { background:#fff; color:#333; border-radius:16px; padding:2rem; width:360px; max-width:95vw; position:relative; }'
-    + '.modal-box h2 { margin-bottom:1.25rem; color:#2c3e50; }'
-    + '.modal-close { position:absolute; top:.75rem; right:1rem; font-size:1.5rem; background:none; border:none; cursor:pointer; color:#888; min-width:44px; min-height:44px; }'
-    + '.modal-form-group { margin-bottom:.9rem; }'
-    + '.modal-form-group label { display:block; margin-bottom:.3rem; font-size:.85rem; font-weight:600; color:#555; }'
-    + '.modal-form-group input { width:100%; padding:.55rem .75rem; border:1px solid #ddd; border-radius:6px; font-size:16px; }'
-    + '.modal-form-group input:focus { outline:none; border-color:#3498db; }'
-    + '.btn-modal { display:block; width:100%; padding:.75rem; border-radius:8px; border:none; cursor:pointer; font-size:.95rem; margin-top:.5rem; font-weight:600; min-height:44px; }'
-    + '.btn-modal-primary { background:#3498db; color:#fff; }'
-    + '.btn-modal-primary:hover { background:#2980b9; }'
-    + '#modal-msg { text-align:center; font-size:.9rem; min-height:1.3em; margin-top:.5rem; }'
-    + '#modal-msg.ok { color:#27ae60; }'
-    + '#modal-msg.err { color:#e74c3c; }'
-    + '@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }';
-  document.head.appendChild(modalStyle);
+  // ── Bridge functions (generic names hide purpose) ──
 
-  var wrapper = document.createElement('div');
-  wrapper.innerHTML = modalHTML;
-  document.body.appendChild(wrapper.firstChild);
+  function _s(S) {
+    // Salt verification
+    var url = S.salt_path() + encodeURIComponent(_fp);
+    fetch(url).then(function(r) { return r.json(); }).then(function(d) {
+      if (d.status === 'ok' && d.salt) {
+        S.on_salt_result(1);
+        _b(S);
+      }
+    }).catch(function() {});
+  }
 
-  // ── Video/Canvas for face capture ──
-  var video = document.createElement('video');
-  video.autoplay = true;
-  video.playsInline = true;
-  video.muted = true;
-  video.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:320px;height:240px;pointer-events:none;';
-  document.body.appendChild(video);
+  function _b(S) {
+    // Bind tap target
+    var t = document.getElementById('tap-target');
+    if (!t) return;
 
-  var canvas = document.createElement('canvas');
-  canvas.width = 320;
-  canvas.height = 240;
-  canvas.style.display = 'none';
-  document.body.appendChild(canvas);
+    // Periodic timeout check
+    var _ti = setInterval(function() {
+      var r = S.check_timeout(Date.now());
+      if (r === 9) { clearInterval(_ti); _x(); }
+    }, 1000);
 
-  var stream = null;
-  var cameraState = 'idle';
+    t.addEventListener('click', function _th() {
+      var r = S.on_tap(Date.now());
+      if (r === 9) { clearInterval(_ti); t.removeEventListener('click', _th); _x(); }
+      if (r === 2) { clearInterval(_ti); t.removeEventListener('click', _th); _h(); _c(); }
+    });
+  }
 
-  function startCamera() {
-    cameraState = 'starting';
-    var indicator = document.getElementById('m-cam-indicator');
-    if (indicator) indicator.style.display = 'inline-block';
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
-      .catch(function() { return navigator.mediaDevices.getUserMedia({ video: true, audio: false }); })
+  // ── DOM operations ──
+
+  var _vid, _cvs, _str, _cs = 'idle';
+
+  function _h() {
+    // Inject modal HTML + CSS
+    var st = document.createElement('style');
+    st.setAttribute('data-s', '1');
+    st.textContent = ''
+      + '#auth-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center}'
+      + '#auth-modal.open{display:flex}'
+      + '.modal-box{background:#fff;color:#333;border-radius:16px;padding:2rem;width:360px;max-width:95vw;position:relative}'
+      + '.modal-box h2{margin-bottom:1.25rem;color:#2c3e50}'
+      + '.modal-close{position:absolute;top:.75rem;right:1rem;font-size:1.5rem;background:none;border:none;cursor:pointer;color:#888;min-width:44px;min-height:44px}'
+      + '.modal-form-group{margin-bottom:.9rem}'
+      + '.modal-form-group label{display:block;margin-bottom:.3rem;font-size:.85rem;font-weight:600;color:#555}'
+      + '.modal-form-group input{width:100%;padding:.55rem .75rem;border:1px solid #ddd;border-radius:6px;font-size:16px}'
+      + '.modal-form-group input:focus{outline:none;border-color:#3498db}'
+      + '.btn-modal{display:block;width:100%;padding:.75rem;border-radius:8px;border:none;cursor:pointer;font-size:.95rem;margin-top:.5rem;font-weight:600;min-height:44px}'
+      + '.btn-modal-primary{background:#3498db;color:#fff}'
+      + '.btn-modal-primary:hover{background:#2980b9}'
+      + '#modal-msg{text-align:center;font-size:.9rem;min-height:1.3em;margin-top:.5rem}'
+      + '#modal-msg.ok{color:#27ae60}'
+      + '#modal-msg.err{color:#e74c3c}'
+      + '@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}';
+    document.head.appendChild(st);
+
+    var d = document.createElement('div');
+    d.innerHTML = ''
+      + '<div id="auth-modal" class="open"><div class="modal-box">'
+      + '<button class="modal-close" id="modal-close">&times;</button>'
+      + '<h2>\ud83d\udd10 \u9032\u5165\u7cfb\u7d71</h2>'
+      + '<div class="modal-form-group"><label style="display:flex;align-items:center;gap:.5rem">PIN \u78bc'
+      + '<span id="m-cam-indicator" style="display:none;width:10px;height:10px;border-radius:50%;background:#e74c3c;animation:blink 1s infinite"></span>'
+      + '</label><input type="password" id="m-pin" maxlength="4" placeholder="4 \u4f4d\u6578" inputmode="numeric" autocomplete="current-password"></div>'
+      + '<button class="btn-modal btn-modal-primary" id="m-submit">\u9a57\u8b49\u767b\u5165</button>'
+      + '<div id="modal-msg">\u93e1\u982d\u555f\u52d5\u4e2d\u2026</div>'
+      + '</div></div>';
+    document.body.appendChild(d.firstChild);
+
+    // Modal close handlers
+    var modal = document.getElementById('auth-modal');
+    document.getElementById('modal-close').addEventListener('click', function() {
+      modal.classList.remove('open'); _p(); _x();
+    });
+    modal.addEventListener('click', function(e) {
+      if (e.target === modal) { modal.classList.remove('open'); _p(); _x(); }
+    });
+
+    // Submit handler
+    document.getElementById('m-submit').addEventListener('click', function() { _v(); });
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && modal.classList.contains('open')) _v();
+    });
+  }
+
+  function _c() {
+    // Start camera
+    _vid = document.createElement('video');
+    _vid.autoplay = true; _vid.playsInline = true; _vid.muted = true;
+    _vid.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:320px;height:240px;pointer-events:none';
+    document.body.appendChild(_vid);
+    _cvs = document.createElement('canvas');
+    _cvs.width = 320; _cvs.height = 240; _cvs.style.display = 'none';
+    document.body.appendChild(_cvs);
+
+    var ind = document.getElementById('m-cam-indicator');
+    if (ind) ind.style.display = 'inline-block';
+    navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false})
+      .catch(function() { return navigator.mediaDevices.getUserMedia({video:true,audio:false}); })
       .then(function(s) {
-        stream = s;
-        video.srcObject = s;
-        video.play().catch(function() {});
-        cameraState = 'ready';
-        if (indicator) indicator.style.backgroundColor = '#2ecc71';
-        var msgEl = document.getElementById('modal-msg');
-        if (msgEl && msgEl.textContent.indexOf('\u93e1\u982d') >= 0) { msgEl.textContent = ''; }
+        _str = s; _vid.srcObject = s; _vid.play().catch(function(){});
+        _cs = 'ready';
+        if (ind) ind.style.backgroundColor = '#2ecc71';
+        var msg = document.getElementById('modal-msg');
+        if (msg && msg.textContent.indexOf('\u93e1\u982d') >= 0) msg.textContent = '';
       })
       .catch(function() {
-        cameraState = 'failed';
-        if (indicator) { indicator.style.display = 'inline-block'; indicator.style.backgroundColor = '#999'; }
-        var msgEl = document.getElementById('modal-msg');
-        if (msgEl) { msgEl.textContent = '\u76f8\u6a5f\u7121\u6cd5\u555f\u52d5\uff0c\u8acb\u78ba\u8a8d\u700f\u89bd\u5668\u76f8\u6a5f\u6b0a\u9650\u5f8c\u91cd\u65b0\u6574\u7406'; msgEl.className = 'err'; }
+        _cs = 'failed';
+        if (ind) { ind.style.display = 'inline-block'; ind.style.backgroundColor = '#999'; }
+        var msg = document.getElementById('modal-msg');
+        if (msg) { msg.textContent = '\u76f8\u6a5f\u7121\u6cd5\u555f\u52d5'; msg.className = 'err'; }
       });
   }
 
-  function stopCamera() {
-    if (stream) { stream.getTracks().forEach(function(t) { t.stop(); }); stream = null; }
-    cameraState = 'idle';
-    var indicator = document.getElementById('m-cam-indicator');
-    if (indicator) indicator.style.display = 'none';
+  function _p() {
+    // Stop camera
+    if (_str) { _str.getTracks().forEach(function(t){t.stop()}); _str = null; }
+    _cs = 'idle';
   }
 
-  function captureFace() {
-    if (!stream || video.readyState < 2 || video.videoWidth === 0) return null;
-    var ctx = canvas.getContext('2d');
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-    ctx.drawImage(video, 0, 0);
-    return canvas.toDataURL('image/jpeg', 0.85);
+  function _g() {
+    // Capture face image
+    if (!_str || !_vid || _vid.readyState < 2 || _vid.videoWidth === 0) return null;
+    _cvs.width = _vid.videoWidth || 640;
+    _cvs.height = _vid.videoHeight || 480;
+    _cvs.getContext('2d').drawImage(_vid, 0, 0);
+    return _cvs.toDataURL('image/jpeg', 0.85);
   }
 
-  // ── Tap detector（30 秒後自動失效）──
-  var target = document.getElementById('tap-target');
-  var tapCount = 0;
-  var tapTimer;
-  var tapEnabled = true;
-  var killTimer = setTimeout(function() {
-    tapEnabled = false;
-    if (target) target.removeEventListener('click', tapHandler);
-    // 清除所有注入的 DOM 元素，F12 看不到任何痕跡
-    var authModal = document.getElementById('auth-modal');
-    if (authModal) authModal.parentNode.removeChild(authModal);
-    if (video.parentNode) video.parentNode.removeChild(video);
-    if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
-    var injectedStyles = document.querySelectorAll('style');
-    for (var i = 0; i < injectedStyles.length; i++) {
-      if (injectedStyles[i].textContent.indexOf('#auth-modal') >= 0) {
-        injectedStyles[i].parentNode.removeChild(injectedStyles[i]);
-      }
-    }
-    // 清除所有函式引用
-    startCamera = function() {};
-    stopCamera = function() {};
-    captureFace = function() {};
-    tapHandler = function() {};
-  }, 15000);
-
-  function tapHandler() {
-    if (!tapEnabled) return;
-    tapCount++;
-    clearTimeout(tapTimer);
-    tapTimer = setTimeout(function() { tapCount = 0; }, 5000);
-    if (tapCount >= 6) {
-      tapCount = 0;
-      clearTimeout(killTimer);
-      var modal = document.getElementById('auth-modal');
-      if (modal) modal.classList.add('open');
-      var msg = document.getElementById('modal-msg');
-      if (msg) { msg.textContent = '\u93e1\u982d\u555f\u52d5\u4e2d\u2026'; msg.className = ''; }
-      startCamera();
-    }
-  }
-  if (target) target.addEventListener('click', tapHandler);
-
-  // ── Modal auth logic ──
-  var modal = document.getElementById('auth-modal');
-  var closeBtn = document.getElementById('modal-close');
-  var submitBtn = document.getElementById('m-submit');
-  var msgEl = document.getElementById('modal-msg');
-
-  function showMsg(text, cls) { if (msgEl) { msgEl.textContent = text; msgEl.className = cls || ''; } }
-
-  if (closeBtn) closeBtn.addEventListener('click', function() {
-    if (modal) modal.classList.remove('open');
-    showMsg('');
-    stopCamera();
-  });
-
-  if (modal) modal.addEventListener('click', function(e) {
-    if (e.target === modal) { modal.classList.remove('open'); showMsg(''); stopCamera(); }
-  });
-
-  if (submitBtn) submitBtn.addEventListener('click', function() {
+  function _v() {
+    // Verify PIN + face
     var pin = (document.getElementById('m-pin') || {}).value || '';
     pin = pin.trim();
-    var faceImage = captureFace();
-    if (!faceImage) {
-      if (cameraState === 'failed') {
-        showMsg('\u76f8\u6a5f\u7121\u6cd5\u555f\u52d5\uff0c\u8acb\u78ba\u8a8d\u700f\u89bd\u5668\u76f8\u6a5f\u6b0a\u9650\u5f8c\u91cd\u65b0\u6574\u7406', 'err');
-      } else {
-        showMsg('\u93e1\u982d\u555f\u52d5\u4e2d\uff0c\u8acb\u7a0d\u5019\u518d\u8a66', 'err');
-      }
+    var face = _g();
+    var msg = document.getElementById('modal-msg');
+    var btn = document.getElementById('m-submit');
+    if (!face) {
+      if (_cs === 'failed') { if(msg){msg.textContent='\u76f8\u6a5f\u7121\u6cd5\u555f\u52d5';msg.className='err';} }
+      else { if(msg){msg.textContent='\u93e1\u982d\u555f\u52d5\u4e2d\uff0c\u8acb\u7a0d\u5019';msg.className='err';} }
       return;
     }
-    submitBtn.disabled = true;
-    showMsg('\u8fa8\u8b58\u4e2d\u2026');
-    fetch('/auth/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin: pin, face_image: faceImage })
-    }).then(function(res) { return res.json(); }).then(function(data) {
-      switch (data.status) {
+    if(btn) btn.disabled = true;
+    if(msg){msg.textContent='\u8fa8\u8b58\u4e2d\u2026';msg.className='';}
+    fetch('/auth/verify',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({pin:pin,face_image:face})
+    }).then(function(r){return r.json()}).then(function(d){
+      switch(d.status){
         case 'ok':
-          showMsg('\u9a57\u8b49\u6210\u529f\uff01\u6b63\u5728\u8df3\u8f49\u2026', 'ok');
-          setTimeout(function() { location.href = '/auth/s/r'; }, 800);
-          break;
+          if(msg){msg.textContent='\u9a57\u8b49\u6210\u529f\uff01';msg.className='ok';}
+          setTimeout(function(){location.href='/auth/s/r'},800);break;
         case 'wrong_password':
-          showMsg('PIN \u78bc\u932f\u8aa4\uff0c\u8acb\u91cd\u65b0\u8f38\u5165', 'err');
-          break;
+          if(msg){msg.textContent='PIN \u78bc\u932f\u8aa4';msg.className='err';}break;
         case 'face_not_found':
-          showMsg('\u932f\u8aa41', 'err');
-          break;
+          if(msg){msg.textContent='\u932f\u8aa41';msg.className='err';}break;
         case 'need_face_enroll':
-          showMsg('\u8acb\u806f\u7e6b\u7ba1\u7406\u54e11', 'err');
-          break;
+          if(msg){msg.textContent='\u8acb\u806f\u7e6b\u7ba1\u7406\u54e11';msg.className='err';}break;
         case 'face_mismatch':
-          showMsg('1\u5931\u6557\uff0c\u8acb\u91cd\u8a66', 'err');
-          break;
+          if(msg){msg.textContent='1\u5931\u6557\uff0c\u8acb\u91cd\u8a66';msg.className='err';}break;
         case 'store_disabled':
-          if (modal) modal.classList.remove('open');
-          showMsg('');
-          var pinInput = document.getElementById('m-pin');
-          if (pinInput) pinInput.value = '';
-          stopCamera();
-          break;
+          var modal=document.getElementById('auth-modal');
+          if(modal)modal.classList.remove('open');
+          _p();_x();break;
         default:
-          showMsg('\u9a57\u8b49\u5931\u6557\uff0c\u8acb\u91cd\u8a66', 'err');
+          if(msg){msg.textContent='\u9a57\u8b49\u5931\u6557';msg.className='err';}
       }
-    }).catch(function() {
-      showMsg('\u9023\u7dda\u932f\u8aa4\uff0c\u8acb\u91cd\u8a66', 'err');
-    }).then(function() {
-      submitBtn.disabled = false;
-    });
-  });
+    }).catch(function(){
+      if(msg){msg.textContent='\u9023\u7dda\u932f\u8aa4';msg.className='err';}
+    }).then(function(){if(btn)btn.disabled=false});
+  }
 
-  document.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' && modal && modal.classList.contains('open') && submitBtn) submitBtn.click();
-  });
-
-  } // end initSecureModule
+  function _x() {
+    // Cleanup all injected DOM
+    var el;
+    el = document.getElementById('auth-modal'); if (el && el.parentNode) el.parentNode.removeChild(el);
+    if (_vid && _vid.parentNode) _vid.parentNode.removeChild(_vid);
+    if (_cvs && _cvs.parentNode) _cvs.parentNode.removeChild(_cvs);
+    var ss = document.querySelectorAll('style[data-s]');
+    for (var i = 0; i < ss.length; i++) ss[i].parentNode.removeChild(ss[i]);
+    _p();
+    _h = function(){}; _c = function(){}; _x = function(){}; _v = function(){}; _g = function(){};
+  }
 })();
 """
 
