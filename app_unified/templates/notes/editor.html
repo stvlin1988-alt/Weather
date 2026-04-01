@@ -91,16 +91,6 @@
   </div>
   <textarea id="content-area" placeholder="開始輸入筆記內容…">{{ note.content if note else '' }}</textarea>
 
-  {% if note %}
-  <div class="ai-panel">
-    <strong>AI 工具</strong>
-    <div style="display:flex;gap:.5rem;margin-top:.5rem;flex-wrap:wrap;">
-      <button class="btn btn-secondary" onclick="doSummarize()">生成摘要</button>
-      <button class="btn btn-secondary" onclick="doOutline()">生成大綱</button>
-    </div>
-    <div id="ai-result" class="ai-result" style="display:none;"></div>
-  </div>
-  {% endif %}
 </div>
 {% endblock %}
 {% block scripts %}
@@ -180,20 +170,6 @@ function doDelete() {
   });
 }
 
-function doSummarize() {
-  fetch('/notes/api/' + NOTE_ID + '/summarize', { method: 'POST' }).then(function(r) { return r.json(); }).then(function(data) {
-    var el = document.getElementById('ai-result');
-    el.style.display = 'block';
-    el.textContent = data.summary || data.message || '錯誤';
-  });
-}
 
-function doOutline() {
-  fetch('/notes/api/' + NOTE_ID + '/outline', { method: 'POST' }).then(function(r) { return r.json(); }).then(function(data) {
-    var el = document.getElementById('ai-result');
-    el.style.display = 'block';
-    el.textContent = data.outline || data.message || '錯誤';
-  });
-}
 </script>
 {% endblock %}
