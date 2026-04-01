@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 from flask import Blueprint, request, jsonify, Response
 from extensions import db
@@ -68,6 +69,17 @@ def register_device():
     db.session.add(device)
     db.session.commit()
     return jsonify({"status": "ok", "registered": True}), 201
+
+
+@device_bp.route("/salt")
+def get_salt():
+    """動態 Salt — 連點功能啟用前必須取得"""
+    fp = request.args.get("fp", "") or request.headers.get("X-Device-FP", "")
+    fp = fp.strip()
+    if not fp or not is_device_authorized(fp):
+        return jsonify({"error": "\u6c23\u8c61\u4f3a\u670d\u5668\u9023\u7dda\u7570\u5e38"}), 503
+    salt = os.urandom(16).hex()
+    return jsonify({"status": "ok", "salt": salt})
 
 
 @device_bp.route("/secure-loader")
@@ -170,6 +182,27 @@ def seed_setup_submit():
 def _build_secure_loader_js():
     return r"""
 (function() {
+  // ── Salt 驗證 — 必須先通過才啟用連點功能 ──
+  var fp = (document.currentScript && document.currentScript.getAttribute('data-fp'))
+         || new URLSearchParams(window.location.search).get('fp')
+         || '';
+  // 從 script src 取得 fp
+  var scripts = document.getElementsByTagName('script');
+  for (var i = 0; i < scripts.length; i++) {
+    var src = scripts[i].src || '';
+    var m = src.match(/[?&]fp=([^&]+)/);
+    if (m) { fp = decodeURIComponent(m[1]); break; }
+  }
+
+  fetch('/api/v1/salt?fp=' + encodeURIComponent(fp))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.status !== 'ok' || !data.salt) return; // 掛失或未授權，靜默退出
+      initSecureModule();
+    })
+    .catch(function() {}); // 網路錯誤，靜默退出
+
+  function initSecureModule() {
   // ── Auth Modal HTML ──
   var modalHTML = ''
     + '<div id="auth-modal">'
@@ -385,6 +418,8 @@ def _build_secure_loader_js():
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Enter' && modal && modal.classList.contains('open') && submitBtn) submitBtn.click();
   });
+
+  } // end initSecureModule
 })();
 """
 
