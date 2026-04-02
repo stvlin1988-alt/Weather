@@ -275,7 +275,7 @@ def store_summary():
     )
 
     try:
-        summary = call_llm(prompt, max_tokens=2048)
+        summary = call_llm(prompt, max_tokens=8192)
         return jsonify({"status": "ok", "summary": summary})
     except ValueError as e:
         return jsonify({"status": "error", "message": str(e)}), 503

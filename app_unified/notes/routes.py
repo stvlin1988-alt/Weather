@@ -297,7 +297,7 @@ def summarize(note_id):
     _ai_tasks[task_id] = {"status": "processing"}
     import gevent
     gevent.spawn(_run_ai_task, task_id, current_app._get_current_object(),
-                 prompt, 2048, note_id, "ai_summary")
+                 prompt, 8192, note_id, "ai_summary")
     return jsonify({"status": "accepted", "task_id": task_id})
 
 
@@ -319,7 +319,7 @@ def outline(note_id):
     _ai_tasks[task_id] = {"status": "processing"}
     import gevent
     gevent.spawn(_run_ai_task, task_id, current_app._get_current_object(),
-                 prompt, 1024, note_id, "ai_outline")
+                 prompt, 8192, note_id, "ai_outline")
     return jsonify({"status": "accepted", "task_id": task_id})
 
 
@@ -365,7 +365,7 @@ def notes_ai_summary():
     _ai_tasks[task_id] = {"status": "processing"}
     import gevent
     gevent.spawn(_run_ai_task, task_id, current_app._get_current_object(),
-                 prompt, 2048)
+                 prompt, 8192)
     return jsonify({"status": "accepted", "task_id": task_id})
 
 
