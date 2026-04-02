@@ -2,13 +2,12 @@ import os
 
 bind = f"0.0.0.0:{os.environ.get('PORT', '8080')}"
 workers = 1
-worker_class = "sync"
+worker_class = "geventwebsocket.gunicorn.workers.GeventWebSocketWorker"
 timeout = 120
 keepalive = 2
 accesslog = "-"
 errorlog = "-"
 loglevel = "info"
-preload_app = True
 
 
 def post_fork(server, worker):

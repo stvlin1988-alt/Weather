@@ -13,3 +13,7 @@ limiter = Limiter(
     default_limits=[],
     storage_uri="memory://",
 )
+
+from flask_socketio import SocketIO
+
+socketio = SocketIO()

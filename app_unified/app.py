@@ -14,7 +14,7 @@ logging.basicConfig(
 from datetime import timedelta
 from flask import Flask, redirect, url_for, render_template
 from config import Config
-from extensions import db, login_manager, limiter
+from extensions import db, login_manager, limiter, socketio
 from models import User
 
 
@@ -26,6 +26,7 @@ def create_app():
     db.init_app(app)
     login_manager.init_app(app)
     limiter.init_app(app)
+    socketio.init_app(app, cors_allowed_origins="*", async_mode="gevent")
 
     @login_manager.user_loader
     def load_user(user_id):
@@ -105,6 +106,9 @@ def create_app():
     app.register_blueprint(weather_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(device_bp)
+
+    from notes.ws import register_ws_events
+    register_ws_events(socketio)
 
     # Register PWA service worker scope
     @app.route("/sw.js")
