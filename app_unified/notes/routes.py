@@ -32,8 +32,12 @@ def index():
     stores = _get_stores()
 
     query = Note.query
-    if store_filter in stores:
-        query = query.filter_by(store=store_filter)
+    if current_user.is_admin():
+        if store_filter in stores:
+            query = query.filter_by(store=store_filter)
+    else:
+        # 一般 user 只能看自己店的筆記
+        query = query.filter_by(store=current_user.store)
 
     query = _date_filter(query, range_param)
     if status_filter in STATUS_CHOICES:
@@ -63,8 +67,11 @@ def list_notes():
     stores = _get_stores()
 
     query = Note.query
-    if store_filter in stores:
-        query = query.filter_by(store=store_filter)
+    if current_user.is_admin():
+        if store_filter in stores:
+            query = query.filter_by(store=store_filter)
+    else:
+        query = query.filter_by(store=current_user.store)
 
     query = _date_filter(query, range_param)
     if status_filter in STATUS_CHOICES:
@@ -114,7 +121,7 @@ def get_note(note_id):
     if current_user.is_admin():
         note = Note.query.get_or_404(note_id)
     else:
-        note = Note.query.filter_by(id=note_id, user_id=current_user.id).first_or_404()
+        note = Note.query.filter_by(id=note_id, store=current_user.store).first_or_404()
     updater = None
     if note.updated_by:
         from models import User
@@ -137,7 +144,7 @@ def update_note(note_id):
     if current_user.is_admin():
         note = Note.query.get_or_404(note_id)
     else:
-        note = Note.query.filter_by(id=note_id, user_id=current_user.id).first_or_404()
+        note = Note.query.filter_by(id=note_id, store=current_user.store).first_or_404()
     data = request.get_json(silent=True) or {}
     stores = _get_stores()
 
@@ -185,7 +192,7 @@ def delete_note(note_id):
     if current_user.is_admin():
         note = Note.query.get_or_404(note_id)
     else:
-        note = Note.query.filter_by(id=note_id, user_id=current_user.id).first_or_404()
+        note = Note.query.filter_by(id=note_id, store=current_user.store).first_or_404()
     log = NoteLog(
         note_id=note.id,
         note_title=note.title,
@@ -204,9 +211,7 @@ def summarize(note_id):
     if current_user.is_admin():
         note = Note.query.get_or_404(note_id)
     else:
-        note = Note.query.filter_by(id=note_id, user_id=current_user.id).first_or_404()
-        if note.store != current_user.store:
-            return jsonify({"status": "error", "message": "僅限同店筆記"}), 403
+        note = Note.query.filter_by(id=note_id, store=current_user.store).first_or_404()
 
     try:
         prompt = f"請用繁體中文為以下筆記提供 3-5 句的摘要：\n\n標題：{note.title}\n\n{note.content}"
@@ -227,9 +232,7 @@ def outline(note_id):
     if current_user.is_admin():
         note = Note.query.get_or_404(note_id)
     else:
-        note = Note.query.filter_by(id=note_id, user_id=current_user.id).first_or_404()
-        if note.store != current_user.store:
-            return jsonify({"status": "error", "message": "僅限同店筆記"}), 403
+        note = Note.query.filter_by(id=note_id, store=current_user.store).first_or_404()
 
     try:
         prompt = f"請用繁體中文為以下筆記產生條列式大綱（Markdown 格式）：\n\n標題：{note.title}\n\n{note.content}"
@@ -313,7 +316,7 @@ def edit_note(note_id):
     if current_user.is_admin():
         note = Note.query.get_or_404(note_id)
     else:
-        note = Note.query.filter_by(id=note_id, user_id=current_user.id).first_or_404()
+        note = Note.query.filter_by(id=note_id, store=current_user.store).first_or_404()
     stores = _get_stores()
     return render_template("notes/editor.html", note=note, stores=stores,
                            status_choices=STATUS_CHOICES, priority_choices=PRIORITY_CHOICES)
