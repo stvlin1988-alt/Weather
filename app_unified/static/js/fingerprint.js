@@ -65,5 +65,13 @@
   sha256(raw).then(function(hash) {
     window.__deviceFP = hash;
     window.__deviceName = getDeviceName();
+  }).catch(function() {
+    // crypto.subtle 不可用時（非 HTTPS 或 iOS 限制），用簡單 hash 替代
+    var h = 0;
+    for (var i = 0; i < raw.length; i++) {
+      h = ((h << 5) - h + raw.charCodeAt(i)) | 0;
+    }
+    window.__deviceFP = 'fb_' + Math.abs(h).toString(16);
+    window.__deviceName = getDeviceName();
   });
 })();

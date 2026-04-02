@@ -229,8 +229,13 @@
   }
 
   function waitForFP(callback) {
-    if (window.__deviceFP) { callback(); }
-    else { setTimeout(function() { waitForFP(callback); }, 50); }
+    var maxWait = 3000, elapsed = 0;
+    function poll() {
+      if (window.__deviceFP) { callback(); }
+      else if (elapsed >= maxWait) { window.__deviceFP = 'timeout'; callback(); }
+      else { elapsed += 50; setTimeout(poll, 50); }
+    }
+    poll();
   }
 
   function fetchWeather(url) {
