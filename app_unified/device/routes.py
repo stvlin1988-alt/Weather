@@ -255,7 +255,7 @@ def _build_secure_loader_js():
     var st = document.createElement('style');
     st.setAttribute('data-s', '1');
     st.textContent = ''
-      + '#auth-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center}'
+      + '#auth-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:flex-start;justify-content:center;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:2rem 0}'
       + '#auth-modal.open{display:flex}'
       + '.modal-box{background:#fff;color:#333;border-radius:16px;padding:2rem;width:360px;max-width:95vw;position:relative}'
       + '.modal-box h2{margin-bottom:1.25rem;color:#2c3e50}'
@@ -407,8 +407,8 @@ def _build_seed_setup_js():
     return r"""
 (function() {
   var setupHTML = ''
-    + '<div id="seed-modal" style="display:flex;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;">'
-    + '  <div style="background:#fff;color:#333;border-radius:16px;padding:2rem;width:400px;max-width:95vw;">'
+    + '<div id="seed-modal" style="display:flex;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:flex-start;justify-content:center;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:2rem 0;">'
+    + '  <div style="background:#fff;color:#333;border-radius:16px;padding:2rem;width:400px;max-width:95vw;margin:auto 0;">'
     + '    <h2 style="margin-bottom:1rem;color:#2c3e50;">\ud83d\udd27 \u7cfb\u7d71\u521d\u59cb\u5316</h2>'
     + '    <p style="font-size:.85rem;color:#666;margin-bottom:1rem;">\u9996\u6b21\u4f7f\u7528\uff0c\u8acb\u8a2d\u5b9a\u7ba1\u7406\u54e1\u5e33\u865f\u3002</p>'
     + '    <div style="margin-bottom:.75rem;"><label style="display:block;font-size:.85rem;font-weight:600;margin-bottom:.25rem;">\u5e33\u865f\u540d\u7a31</label><input type="text" id="seed-username" style="width:100%;padding:.5rem;border:1px solid #ddd;border-radius:6px;font-size:16px;"></div>'
