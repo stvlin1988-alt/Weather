@@ -1,3 +1,6 @@
+from gevent import monkey
+monkey.patch_all()
+
 import os, sys, types
 
 # pkg_resources 替代方案：用 importlib 提供 resource_filename
