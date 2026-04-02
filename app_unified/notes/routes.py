@@ -213,7 +213,14 @@ def summarize(note_id):
     note = Note.query.get_or_404(note_id)
 
     try:
-        prompt = f"請用繁體中文為以下筆記提供 3-5 句的摘要：\n\n標題：{note.title}\n\n{note.content}"
+        prompt = (
+            "角色與任務：你是一位高效的行政助理，請幫我整理以下這篇筆記內容，提供 3-5 句的重點摘要。\n\n"
+            "處理原則：\n"
+            "- 分類歸納：將性質相近的任務歸在同一個標題下（例如：人事管理、設備維修、待辦清單、外部聯繫等）\n"
+            "- 資訊完整：嚴禁刪減或改寫原本的細節，請確保每一條筆記的內容都完整保留\n"
+            "- 格式清爽：使用 Markdown 的標題和清單格式，讓視覺上一目了然\n\n"
+            f"待整理筆記內容：\n\n標題：{note.title}\n\n{note.content}"
+        )
         summary = call_llm(prompt, max_tokens=512)
         note.ai_summary = summary
         note.updated_at = datetime.utcnow()
@@ -233,7 +240,14 @@ def outline(note_id):
     note = Note.query.get_or_404(note_id)
 
     try:
-        prompt = f"請用繁體中文為以下筆記產生條列式大綱（Markdown 格式）：\n\n標題：{note.title}\n\n{note.content}"
+        prompt = (
+            "角色與任務：你是一位高效的行政助理，請幫我將以下這篇筆記整理成條列式大綱。\n\n"
+            "處理原則：\n"
+            "- 分類歸納：將性質相近的任務歸在同一個標題下（例如：人事管理、設備維修、待辦清單、外部聯繫等）\n"
+            "- 資訊完整：嚴禁刪減或改寫原本的細節，請確保每一條筆記的內容都完整保留\n"
+            "- 格式清爽：使用 Markdown 的標題和清單格式，讓視覺上一目了然\n\n"
+            f"待整理筆記內容：\n\n標題：{note.title}\n\n{note.content}"
+        )
         outline_text = call_llm(prompt, max_tokens=1024)
         note.ai_outline = outline_text
         note.updated_at = datetime.utcnow()
@@ -276,27 +290,34 @@ def notes_ai_summary():
         lines.append(f"{store_tag}[{date_str}][{author}][{s_label}][優先:{p_label}] {n.title}\n{n.content}")
 
     store_label = f"「{store}店」" if store != "all" else "全店"
+    notes_content = "\n---\n".join(lines)
     if store == "all":
         prompt = (
-            f"以下是{store_label}近 {days} 天的員工筆記：\n\n"
-            + "\n---\n".join(lines)
-            + "\n\n請用繁體中文，依以下結構整理：\n"
+            "角色與任務：你是一位高效的行政助理，請幫我整理以下這些零散的筆記內容。\n\n"
+            "處理原則：\n"
+            "- 分類歸納：將性質相近的任務歸在同一個標題下（例如：人事管理、設備維修、待辦清單、外部聯繫等）\n"
+            "- 資訊完整：嚴禁刪減或改寫原本的細節，請確保每一條筆記的內容都完整保留\n"
+            "- 格式清爽：使用 Markdown 的標題和清單格式，讓視覺上一目了然\n\n"
+            "額外要求：\n"
             "1. 第一層：依「店別」分類\n"
             "2. 第二層：每間店內依「優先權」排列（高→中→低）\n"
             "3. 相關的事項請合併成一條摘要，不要逐條列出\n"
-            "4. 最後給主管一個「建議優先處理順序」，說明應該先處理哪件事、為什麼\n"
-            "請用 Markdown 格式回覆。"
+            "4. 最後給主管一個「建議優先處理順序」，說明應該先處理哪件事、為什麼\n\n"
+            f"待整理筆記內容（{store_label}近 {days} 天）：\n\n{notes_content}"
         )
     else:
         prompt = (
-            f"以下是{store_label}近 {days} 天的員工筆記：\n\n"
-            + "\n---\n".join(lines)
-            + f"\n\n請用繁體中文，依以下結構整理：\n"
+            "角色與任務：你是一位高效的行政助理，請幫我整理以下這些零散的筆記內容。\n\n"
+            "處理原則：\n"
+            "- 分類歸納：將性質相近的任務歸在同一個標題下（例如：人事管理、設備維修、待辦清單、外部聯繫等）\n"
+            "- 資訊完整：嚴禁刪減或改寫原本的細節，請確保每一條筆記的內容都完整保留\n"
+            "- 格式清爽：使用 Markdown 的標題和清單格式，讓視覺上一目了然\n\n"
+            "額外要求：\n"
             f"1. 先標明這是「{store}店」的摘要\n"
             "2. 依「優先權」排列（高→中→低）\n"
             "3. 相關的事項請合併成一條摘要，不要逐條列出\n"
-            "4. 最後給主管一個「建議優先處理順序」，說明應該先處理哪件事、為什麼\n"
-            "請用 Markdown 格式回覆。"
+            "4. 最後給主管一個「建議優先處理順序」，說明應該先處理哪件事、為什麼\n\n"
+            f"待整理筆記內容（{store_label}近 {days} 天）：\n\n{notes_content}"
         )
 
     try:
