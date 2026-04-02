@@ -25,6 +25,9 @@ face_bp = Blueprint("face", __name__, url_prefix="/face")
 @face_bp.route("/settings")
 @login_required
 def settings():
+    if not current_user.is_admin():
+        from flask import abort
+        abort(403)
     return render_template("face_enroll.html")
 
 
