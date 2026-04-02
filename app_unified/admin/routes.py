@@ -19,23 +19,30 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 
 def _call_gemini(prompt: str, max_tokens: int) -> str:
-    """Gemini 1.5 Flash（免費方案）"""
+    """Gemini 2.0 Flash（免費方案），含 429 retry"""
     api_key = current_app.config.get("GEMINI_API_KEY", "").strip()
     if not api_key:
         raise ValueError("GEMINI_API_KEY not set")
+    import time
+    import logging
     import requests as _req
-    model = current_app.config.get("GEMINI_MODEL", "gemini-1.5-flash")
-    resp = _req.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}",
-        json={
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": max_tokens},
-        },
-        timeout=120,
-    )
+    model = current_app.config.get("GEMINI_MODEL", "gemini-2.0-flash")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"maxOutputTokens": max_tokens},
+    }
+    for attempt in range(3):
+        resp = _req.post(url, json=payload, timeout=120)
+        if resp.status_code == 429:
+            wait = (attempt + 1) * 10
+            logging.getLogger("call_llm").warning("=== Gemini 429, retry in %ds ===", wait)
+            time.sleep(wait)
+            continue
+        resp.raise_for_status()
+        data = resp.json()
+        return data["candidates"][0]["content"]["parts"][0]["text"]
     resp.raise_for_status()
-    data = resp.json()
-    return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
 def _call_ollama(prompt: str, max_tokens: int) -> str:
