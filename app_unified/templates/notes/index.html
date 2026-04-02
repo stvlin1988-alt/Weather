@@ -133,7 +133,7 @@
 {% endif %}
 
 <!-- Face enroll modal -->
-<div id="enroll-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center;">
+<div id="enroll-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:flex-start;justify-content:center;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:2rem 0;">
   <div class="card" style="max-width:400px;width:90%;position:relative;">
     <button onclick="document.getElementById('enroll-modal').style.display='none'" style="position:absolute;top:.5rem;right:.75rem;background:none;border:none;font-size:1.4rem;cursor:pointer;min-width:44px;min-height:44px;">×</button>
     <h3 style="margin-bottom:1rem;">登錄人臉</h3>
