@@ -160,23 +160,33 @@ function generateSummary() {
   btn.disabled = true;
   statusEl.textContent = 'AI 整理中…（首次可能需要數分鐘）';
   outputEl.style.display = 'none';
-  fetch('/notes/ai/summary', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ store: store, days: parseInt(days) })
-  }).then(function(res) { return res.json(); }).then(function(data) {
-    if (data.status === 'ok') {
-      outputEl.textContent = data.summary;
-      outputEl.style.display = 'block';
-      statusEl.textContent = '';
-    } else {
-      statusEl.textContent = data.message || '錯誤';
-    }
-  }).catch(function(e) {
-    statusEl.textContent = '連線錯誤：' + e.message;
-  }).finally(function() {
-    btn.disabled = false;
-  });
+
+  if (window._ws && window._ws.connected) {
+    window._ws.emit('d', { op: 'as', store: store, days: parseInt(days) });
+    window._ws.once('r', function(data) {
+      if (data.op === 'as' && data.status === 'ok') {
+        outputEl.textContent = data.summary;
+        outputEl.style.display = 'block';
+        statusEl.textContent = '';
+      } else {
+        statusEl.textContent = data.message || '錯誤';
+      }
+      btn.disabled = false;
+    });
+  } else {
+    fetch('/notes/ai/summary', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ store: store, days: parseInt(days) })
+    }).then(function(res) { return res.json(); }).then(function(data) {
+      if (data.status === 'ok') {
+        outputEl.textContent = data.summary;
+        outputEl.style.display = 'block';
+        statusEl.textContent = '';
+      } else { statusEl.textContent = data.message || '錯誤'; }
+    }).catch(function(e) { statusEl.textContent = '連線錯誤：' + e.message; })
+    .finally(function() { btn.disabled = false; });
+  }
 }
 </script>
 <script src="{{ url_for('static', filename='js/camera.js') }}"></script>
