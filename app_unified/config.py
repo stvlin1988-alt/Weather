@@ -27,7 +27,7 @@ class Config:
 
     # Gemini (Google AI, free tier with 1.5 Flash)
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
     # Ollama (self-hosted LLM, fallback)
     OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
