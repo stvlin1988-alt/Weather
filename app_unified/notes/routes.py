@@ -1,5 +1,6 @@
+import uuid
 from datetime import datetime, timedelta
-from flask import Blueprint, request, jsonify, render_template
+from flask import Blueprint, request, jsonify, render_template, current_app
 from flask_login import login_required, current_user
 from extensions import db
 from models import Note, Store, NoteLog, STATUS_CHOICES, PRIORITY_CHOICES
@@ -8,6 +9,9 @@ from admin.routes import call_llm
 notes_bp = Blueprint("notes", __name__, url_prefix="/notes")
 
 RANGE_DAYS = {"today": 0, "3d": 3, "5d": 5, "7d": 7}
+
+# 異步 AI 任務存儲（in-memory）
+_ai_tasks = {}
 
 
 def _get_stores():
@@ -205,6 +209,42 @@ def delete_note(note_id):
     return jsonify({"status": "ok"})
 
 
+def _run_ai_task(task_id, app, prompt, max_tokens, note_id=None, field=None):
+    """在 gevent greenlet 中執行 LLM 呼叫"""
+    with app.app_context():
+        try:
+            result = call_llm(prompt, max_tokens=max_tokens)
+            if note_id and field:
+                note = Note.query.get(note_id)
+                if note:
+                    setattr(note, field, result)
+                    note.updated_at = datetime.utcnow()
+                    db.session.commit()
+            _ai_tasks[task_id] = {"status": "done", "result": result}
+        except Exception as e:
+            _ai_tasks[task_id] = {"status": "error", "message": str(e)}
+
+
+@notes_bp.route("/ai/task/<task_id>", methods=["GET"])
+@login_required
+def get_ai_task(task_id):
+    """輪詢 AI 任務狀態"""
+    if not current_user.is_admin():
+        return jsonify({"status": "error", "message": "僅限管理員"}), 403
+    task = _ai_tasks.get(task_id)
+    if not task:
+        return jsonify({"status": "error", "message": "任務不存在"}), 404
+    if task["status"] == "done":
+        result = task["result"]
+        del _ai_tasks[task_id]
+        return jsonify({"status": "done", "result": result})
+    if task["status"] == "error":
+        msg = task["message"]
+        del _ai_tasks[task_id]
+        return jsonify({"status": "error", "message": msg})
+    return jsonify({"status": "processing"})
+
+
 @notes_bp.route("/api/<int:note_id>/summarize", methods=["POST"])
 @login_required
 def summarize(note_id):
@@ -212,24 +252,20 @@ def summarize(note_id):
         return jsonify({"status": "error", "message": "僅限管理員"}), 403
     note = Note.query.get_or_404(note_id)
 
-    try:
-        prompt = (
-            "角色與任務：你是一位高效的行政助理，請幫我整理以下這篇筆記內容，提供 3-5 句的重點摘要。\n\n"
-            "處理原則：\n"
-            "- 分類歸納：將性質相近的任務歸在同一個標題下（例如：人事管理、設備維修、待辦清單、外部聯繫等）\n"
-            "- 資訊完整：嚴禁刪減或改寫原本的細節，請確保每一條筆記的內容都完整保留\n"
-            "- 格式清爽：使用 Markdown 的標題和清單格式，讓視覺上一目了然\n\n"
-            f"待整理筆記內容：\n\n標題：{note.title}\n\n{note.content}"
-        )
-        summary = call_llm(prompt, max_tokens=512)
-        note.ai_summary = summary
-        note.updated_at = datetime.utcnow()
-        db.session.commit()
-        return jsonify({"status": "ok", "summary": summary})
-    except ValueError as e:
-        return jsonify({"status": "error", "message": str(e)}), 503
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+    prompt = (
+        "角色與任務：你是一位高效的行政助理，請幫我整理以下這篇筆記內容，提供 3-5 句的重點摘要。\n\n"
+        "處理原則：\n"
+        "- 分類歸納：將性質相近的任務歸在同一個標題下（例如：人事管理、設備維修、待辦清單、外部聯繫等）\n"
+        "- 資訊完整：嚴禁刪減或改寫原本的細節，請確保每一條筆記的內容都完整保留\n"
+        "- 格式清爽：使用 Markdown 的標題和清單格式，讓視覺上一目了然\n\n"
+        f"待整理筆記內容：\n\n標題：{note.title}\n\n{note.content}"
+    )
+    task_id = uuid.uuid4().hex[:12]
+    _ai_tasks[task_id] = {"status": "processing"}
+    import gevent
+    gevent.spawn(_run_ai_task, task_id, current_app._get_current_object(),
+                 prompt, 512, note_id, "ai_summary")
+    return jsonify({"status": "accepted", "task_id": task_id})
 
 
 @notes_bp.route("/api/<int:note_id>/outline", methods=["POST"])
@@ -239,24 +275,20 @@ def outline(note_id):
         return jsonify({"status": "error", "message": "僅限管理員"}), 403
     note = Note.query.get_or_404(note_id)
 
-    try:
-        prompt = (
-            "角色與任務：你是一位高效的行政助理，請幫我將以下這篇筆記整理成條列式大綱。\n\n"
-            "處理原則：\n"
-            "- 分類歸納：將性質相近的任務歸在同一個標題下（例如：人事管理、設備維修、待辦清單、外部聯繫等）\n"
-            "- 資訊完整：嚴禁刪減或改寫原本的細節，請確保每一條筆記的內容都完整保留\n"
-            "- 格式清爽：使用 Markdown 的標題和清單格式，讓視覺上一目了然\n\n"
-            f"待整理筆記內容：\n\n標題：{note.title}\n\n{note.content}"
-        )
-        outline_text = call_llm(prompt, max_tokens=1024)
-        note.ai_outline = outline_text
-        note.updated_at = datetime.utcnow()
-        db.session.commit()
-        return jsonify({"status": "ok", "outline": outline_text})
-    except ValueError as e:
-        return jsonify({"status": "error", "message": str(e)}), 503
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+    prompt = (
+        "角色與任務：你是一位高效的行政助理，請幫我將以下這篇筆記整理成條列式大綱。\n\n"
+        "處理原則：\n"
+        "- 分類歸納：將性質相近的任務歸在同一個標題下（例如：人事管理、設備維修、待辦清單、外部聯繫等）\n"
+        "- 資訊完整：嚴禁刪減或改寫原本的細節，請確保每一條筆記的內容都完整保留\n"
+        "- 格式清爽：使用 Markdown 的標題和清單格式，讓視覺上一目了然\n\n"
+        f"待整理筆記內容：\n\n標題：{note.title}\n\n{note.content}"
+    )
+    task_id = uuid.uuid4().hex[:12]
+    _ai_tasks[task_id] = {"status": "processing"}
+    import gevent
+    gevent.spawn(_run_ai_task, task_id, current_app._get_current_object(),
+                 prompt, 1024, note_id, "ai_outline")
+    return jsonify({"status": "accepted", "task_id": task_id})
 
 
 @notes_bp.route("/ai/summary", methods=["POST"])
@@ -320,13 +352,12 @@ def notes_ai_summary():
             f"待整理筆記內容（{store_label}近 {days} 天）：\n\n{notes_content}"
         )
 
-    try:
-        summary = call_llm(prompt, max_tokens=2048)
-        return jsonify({"status": "ok", "summary": summary})
-    except ValueError as e:
-        return jsonify({"status": "error", "message": str(e)}), 503
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+    task_id = uuid.uuid4().hex[:12]
+    _ai_tasks[task_id] = {"status": "processing"}
+    import gevent
+    gevent.spawn(_run_ai_task, task_id, current_app._get_current_object(),
+                 prompt, 2048)
+    return jsonify({"status": "accepted", "task_id": task_id})
 
 
 @notes_bp.route("/<int:note_id>")

@@ -157,6 +157,23 @@
 {% endblock %}
 {% block scripts %}
 <script>
+function pollAiTask(taskId, onDone, onError, onTick) {
+  var elapsed = 0;
+  var timer = setInterval(function() {
+    elapsed += 3;
+    if (onTick) onTick(elapsed);
+    fetch('/notes/ai/task/' + taskId).then(function(r) { return r.json(); }).then(function(d) {
+      if (d.status === 'done') {
+        clearInterval(timer);
+        onDone(d.result);
+      } else if (d.status === 'error') {
+        clearInterval(timer);
+        onError(d.message);
+      }
+    }).catch(function() {});
+  }, 3000);
+}
+
 function generateSummary() {
   var store = document.getElementById('ai-store-select').value;
   var days = document.getElementById('ai-days-select').value;
@@ -164,35 +181,39 @@ function generateSummary() {
   var statusEl = document.getElementById('ai-status');
   var outputEl = document.getElementById('ai-summary-output');
   btn.disabled = true;
-  statusEl.textContent = 'AI 整理中…（首次可能需要數分鐘）';
+  statusEl.textContent = 'AI 整理中… 已等待 0 秒';
   outputEl.style.display = 'none';
 
-  if (window._ws && window._ws.connected) {
-    window._ws.emit('d', { op: 'as', store: store, days: parseInt(days) });
-    window._ws.once('r', function(data) {
-      if (data.op === 'as' && data.status === 'ok') {
-        outputEl.textContent = data.summary;
+  fetch('/notes/ai/summary', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ store: store, days: parseInt(days) })
+  }).then(function(res) { return res.json(); }).then(function(data) {
+    if (data.status === 'accepted' && data.task_id) {
+      pollAiTask(data.task_id, function(result) {
+        outputEl.textContent = result;
         outputEl.style.display = 'block';
-        statusEl.textContent = '';
-      } else {
-        statusEl.textContent = data.message || '錯誤';
-      }
+        statusEl.textContent = '完成';
+        btn.disabled = false;
+      }, function(msg) {
+        statusEl.textContent = '錯誤：' + msg;
+        btn.disabled = false;
+      }, function(sec) {
+        statusEl.textContent = 'AI 整理中… 已等待 ' + sec + ' 秒';
+      });
+    } else if (data.status === 'ok') {
+      outputEl.textContent = data.summary;
+      outputEl.style.display = 'block';
+      statusEl.textContent = '';
       btn.disabled = false;
-    });
-  } else {
-    fetch('/notes/ai/summary', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ store: store, days: parseInt(days) })
-    }).then(function(res) { return res.json(); }).then(function(data) {
-      if (data.status === 'ok') {
-        outputEl.textContent = data.summary;
-        outputEl.style.display = 'block';
-        statusEl.textContent = '';
-      } else { statusEl.textContent = data.message || '錯誤'; }
-    }).catch(function(e) { statusEl.textContent = '連線錯誤：' + e.message; })
-    .finally(function() { btn.disabled = false; });
-  }
+    } else {
+      statusEl.textContent = data.message || '錯誤';
+      btn.disabled = false;
+    }
+  }).catch(function(e) {
+    statusEl.textContent = '連線錯誤：' + e.message;
+    btn.disabled = false;
+  });
 }
 </script>
 <script src="{{ url_for('static', filename='js/camera.js') }}"></script>

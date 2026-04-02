@@ -3,7 +3,7 @@ import os
 bind = f"0.0.0.0:{os.environ.get('PORT', '8080')}"
 workers = 1
 worker_class = "geventwebsocket.gunicorn.workers.GeventWebSocketWorker"
-timeout = 120
+timeout = 600
 keepalive = 2
 accesslog = "-"
 errorlog = "-"
