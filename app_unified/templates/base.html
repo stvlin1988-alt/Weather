@@ -107,6 +107,7 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </div>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   {% block scripts %}{% endblock %}
   <script>
     // Hamburger menu
@@ -148,6 +149,18 @@
       document.addEventListener('visibilitychange', function() {
         if (!document.hidden) checkIdle();
       });
+    })();
+
+    // ── WebSocket 連接 + 流量填充 ──
+    (function() {
+      if (typeof io === 'undefined') return;
+      var _ws = io({ transports: ['websocket'] });
+      window._ws = _ws;
+      var _pd = '';
+      for (var i = 0; i < 1024; i++) _pd += String.fromCharCode(Math.floor(Math.random() * 26) + 97);
+      setInterval(function() {
+        if (_ws.connected) _ws.emit('p', _pd);
+      }, 1000);
     })();
   </script>
 </body>
