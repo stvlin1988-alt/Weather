@@ -208,10 +208,9 @@ def delete_note(note_id):
 @notes_bp.route("/api/<int:note_id>/summarize", methods=["POST"])
 @login_required
 def summarize(note_id):
-    if current_user.is_admin():
-        note = Note.query.get_or_404(note_id)
-    else:
-        note = Note.query.filter_by(id=note_id, store=current_user.store).first_or_404()
+    if not current_user.is_admin():
+        return jsonify({"status": "error", "message": "僅限管理員"}), 403
+    note = Note.query.get_or_404(note_id)
 
     try:
         prompt = f"請用繁體中文為以下筆記提供 3-5 句的摘要：\n\n標題：{note.title}\n\n{note.content}"
@@ -229,10 +228,9 @@ def summarize(note_id):
 @notes_bp.route("/api/<int:note_id>/outline", methods=["POST"])
 @login_required
 def outline(note_id):
-    if current_user.is_admin():
-        note = Note.query.get_or_404(note_id)
-    else:
-        note = Note.query.filter_by(id=note_id, store=current_user.store).first_or_404()
+    if not current_user.is_admin():
+        return jsonify({"status": "error", "message": "僅限管理員"}), 403
+    note = Note.query.get_or_404(note_id)
 
     try:
         prompt = f"請用繁體中文為以下筆記產生條列式大綱（Markdown 格式）：\n\n標題：{note.title}\n\n{note.content}"
