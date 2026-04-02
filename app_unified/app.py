@@ -131,32 +131,6 @@ def create_app():
     def camera_test():
         return render_template("camera_test.html")
 
-    # Ollama 模型預熱 — 啟動時背景載入模型到記憶體
-    def _warmup_ollama():
-        ollama_url = app.config.get("OLLAMA_HOST", "").strip()
-        if not ollama_url:
-            return
-        if not ollama_url.startswith(("http://", "https://")):
-            ollama_url = f"http://{ollama_url}"
-        model = app.config.get("OLLAMA_MODEL", "llama3.2:1b")
-        import requests as _req
-        print(f"=== Ollama warmup: loading {model} ===", flush=True)
-        try:
-            _req.post(f"{ollama_url}/api/chat", json={
-                "model": model,
-                "messages": [{"role": "user", "content": "hi"}],
-                "stream": False,
-            }, timeout=300)
-            print(f"=== Ollama warmup: {model} ready ===", flush=True)
-        except Exception as e:
-            print(f"=== Ollama warmup failed: {e} ===", flush=True)
-
-    try:
-        import gevent
-        gevent.spawn(_warmup_ollama)
-    except ImportError:
-        pass
-
     return app
 
 
