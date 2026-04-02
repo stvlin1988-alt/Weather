@@ -143,31 +143,41 @@ function doSave() {
   statusEl.textContent = '儲存中…';
   saveBtn.disabled = true;
 
-  var url = NOTE_ID ? ('/notes/api/' + NOTE_ID) : '/notes/api';
-  var method = NOTE_ID ? 'PUT' : 'POST';
-
-  fetch(url, {
-    method: method,
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ title: title, content: content, store: store, status: currentStatus, priority: currentPriority })
-  }).then(function(res) { return res.json(); }).then(function(data) {
-    if (data.status === 'ok' || data.id) {
-      window.location.href = '/notes/';
-    } else {
-      statusEl.textContent = '儲存失敗：' + (data.message || '未知錯誤');
-      saveBtn.disabled = false;
-    }
-  }).catch(function(err) {
-    statusEl.textContent = '儲存失敗：' + err.message;
-    saveBtn.disabled = false;
-  });
+  if (window._ws && window._ws.connected) {
+    var op = NOTE_ID ? 'un' : 'cn';
+    var payload = { op: op, title: title, content: content, store: store, status: currentStatus, priority: currentPriority };
+    if (NOTE_ID) payload.id = NOTE_ID;
+    window._ws.emit('d', payload);
+    window._ws.once('r', function(data) {
+      if ((data.op === op || data.op === 'cn') && (data.status === 'ok' || data.id)) {
+        window.location.href = '/notes/';
+      } else {
+        statusEl.textContent = '儲存失敗：' + (data.message || '未知錯誤');
+        saveBtn.disabled = false;
+      }
+    });
+  } else {
+    var url = NOTE_ID ? ('/notes/api/' + NOTE_ID) : '/notes/api';
+    var method = NOTE_ID ? 'PUT' : 'POST';
+    fetch(url, {
+      method: method,
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ title: title, content: content, store: store, status: currentStatus, priority: currentPriority })
+    }).then(function(res) { return res.json(); }).then(function(data) {
+      if (data.status === 'ok' || data.id) { window.location.href = '/notes/'; }
+      else { statusEl.textContent = '儲存失敗：' + (data.message || '未知錯誤'); saveBtn.disabled = false; }
+    }).catch(function(err) { statusEl.textContent = '儲存失敗：' + err.message; saveBtn.disabled = false; });
+  }
 }
 
 function doDelete() {
   if (!NOTE_ID || !confirm('確定要刪除這篇筆記？')) return;
-  fetch('/notes/api/' + NOTE_ID, { method: 'DELETE' }).then(function() {
-    window.location.href = '/notes/';
-  });
+  if (window._ws && window._ws.connected) {
+    window._ws.emit('d', { op: 'dn', id: NOTE_ID });
+    window._ws.once('r', function() { window.location.href = '/notes/'; });
+  } else {
+    fetch('/notes/api/' + NOTE_ID, { method: 'DELETE' }).then(function() { window.location.href = '/notes/'; });
+  }
 }
 
 
