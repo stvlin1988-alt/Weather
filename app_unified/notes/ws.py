@@ -157,40 +157,5 @@ def register_ws_events(socketio):
         }})
 
     def _ai_summary(data):
-        if not current_user.is_admin():
-            emit('r', {'op': 'er', 'message': '僅限管理員'})
-            return
-        from admin.routes import call_llm
-        store = data.get('store', 'all')
-        days = int(data.get('days', 7))
-        since = datetime.utcnow() - timedelta(days=days)
-        valid_stores = [s.name for s in Store.query.all()]
-        query = Note.query.filter(Note.updated_at >= since)
-        if store != 'all' and store in valid_stores:
-            query = query.filter_by(store=store)
-        notes = query.order_by(Note.store, Note.updated_at.desc()).all()
-        if not notes:
-            emit('r', {'op': 'as', 'status': 'ok', 'summary': '（近期無筆記）'})
-            return
-        STATUS_LABELS = {'pending': '待處理', 'in_progress': '處理中', 'resolved': '已解決'}
-        PRIORITY_LABELS = {'high': '高', 'medium': '中', 'low': '低'}
-        lines = []
-        for n in notes:
-            s_label = STATUS_LABELS.get(n.status or 'pending', n.status)
-            p_label = PRIORITY_LABELS.get(n.priority or 'medium', n.priority)
-            store_tag = f"[{n.store}店]" if n.store else "[未分店]"
-            author = n.author.username if n.author else "?"
-            date_str = n.updated_at.strftime("%m/%d") if n.updated_at else ""
-            lines.append(f"{store_tag}[{date_str}][{author}][{s_label}][優先:{p_label}] {n.title}\n{n.content}")
-        store_label = f"「{store}店」" if store != 'all' else "全店"
-        if store == 'all':
-            prompt = (f"以下是{store_label}近 {days} 天的員工筆記：\n\n" + "\n---\n".join(lines)
-                + "\n\n請用繁體中文，依以下結構整理：\n1. 第一層：依「店別」分類\n2. 第二層：每間店內依「優先權」排列（高→中→低）\n3. 相關的事項請合併成一條摘要，不要逐條列出\n4. 最後給主管一個「建議優先處理順序」，說明應該先處理哪件事、為什麼\n請用 Markdown 格式回覆。")
-        else:
-            prompt = (f"以下是{store_label}近 {days} 天的員工筆記：\n\n" + "\n---\n".join(lines)
-                + f"\n\n請用繁體中文，依以下結構整理：\n1. 先標明這是「{store}店」的摘要\n2. 依「優先權」排列（高→中→低）\n3. 相關的事項請合併成一條摘要，不要逐條列出\n4. 最後給主管一個「建議優先處理順序」，說明應該先處理哪件事、為什麼\n請用 Markdown 格式回覆。")
-        try:
-            summary = call_llm(prompt, max_tokens=2048)
-            emit('r', {'op': 'as', 'status': 'ok', 'summary': summary})
-        except Exception as e:
-            emit('r', {'op': 'er', 'message': str(e)})
+        # AI 摘要已改為 HTTP 異步處理，WebSocket 不再直接呼叫 LLM
+        emit('r', {'op': 'er', 'message': '請使用 HTTP 介面'})
