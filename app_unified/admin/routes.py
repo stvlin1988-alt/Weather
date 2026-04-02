@@ -18,46 +18,69 @@ except BaseException as _e:
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 
-def call_llm(prompt: str, max_tokens: int = 2048) -> str:
-    """呼叫 Ollama（優先）或 Anthropic（fallback）。"""
+def _call_gemini(prompt: str, max_tokens: int) -> str:
+    """Gemini 1.5 Flash（免費方案）"""
+    api_key = current_app.config.get("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY not set")
+    import requests as _req
+    model = current_app.config.get("GEMINI_MODEL", "gemini-1.5-flash")
+    resp = _req.post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}",
+        json={
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": max_tokens},
+        },
+        timeout=120,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    return data["candidates"][0]["content"]["parts"][0]["text"]
+
+
+def _call_ollama(prompt: str, max_tokens: int) -> str:
+    """Ollama（自架 LLM）"""
     ollama_url = current_app.config.get("OLLAMA_HOST", "").strip()
-    if ollama_url and not ollama_url.startswith(("http://", "https://")):
+    if not ollama_url:
+        raise ValueError("OLLAMA_HOST not set")
+    if not ollama_url.startswith(("http://", "https://")):
         ollama_url = f"http://{ollama_url}"
-    if ollama_url:
-        import requests as _req
-        model = current_app.config.get("OLLAMA_MODEL", "llama3.2:1b")
-        # 先嘗試 OpenAI 相容 API，失敗則用 Ollama 原生 API
-        try:
-            resp = _req.post(
-                f"{ollama_url}/v1/chat/completions",
-                json={
-                    "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": max_tokens,
-                    "stream": False,
-                },
-                timeout=300,
-            )
-            resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"]
-        except (_req.exceptions.HTTPError, KeyError):
-            pass
-        # Ollama 原生 API
+    import requests as _req
+    model = current_app.config.get("OLLAMA_MODEL", "llama3.2:1b")
+    # 先嘗試 OpenAI 相容 API，失敗則用 Ollama 原生 API
+    try:
         resp = _req.post(
-            f"{ollama_url}/api/chat",
+            f"{ollama_url}/v1/chat/completions",
             json={
                 "model": model,
                 "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": max_tokens,
                 "stream": False,
             },
             timeout=300,
         )
         resp.raise_for_status()
-        return resp.json()["message"]["content"]
+        return resp.json()["choices"][0]["message"]["content"]
+    except (_req.exceptions.HTTPError, KeyError):
+        pass
+    resp = _req.post(
+        f"{ollama_url}/api/chat",
+        json={
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+        },
+        timeout=300,
+    )
+    resp.raise_for_status()
+    return resp.json()["message"]["content"]
 
-    api_key = current_app.config.get("ANTHROPIC_API_KEY", "")
+
+def _call_anthropic(prompt: str, max_tokens: int) -> str:
+    """Anthropic Claude"""
+    api_key = current_app.config.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
-        raise ValueError("未設定 AI 服務（請設定 OLLAMA_BASE_URL 或 ANTHROPIC_API_KEY）")
+        raise ValueError("ANTHROPIC_API_KEY not set")
     import anthropic
     client = anthropic.Anthropic(api_key=api_key)
     msg = client.messages.create(
@@ -66,6 +89,17 @@ def call_llm(prompt: str, max_tokens: int = 2048) -> str:
         messages=[{"role": "user", "content": prompt}],
     )
     return msg.content[0].text
+
+
+def call_llm(prompt: str, max_tokens: int = 2048) -> str:
+    """依序嘗試：Gemini → Ollama → Anthropic"""
+    errors = []
+    for name, fn in [("Gemini", _call_gemini), ("Ollama", _call_ollama), ("Anthropic", _call_anthropic)]:
+        try:
+            return fn(prompt, max_tokens)
+        except Exception as e:
+            errors.append(f"{name}: {e}")
+    raise ValueError("所有 AI 服務都無法使用：" + "; ".join(errors))
 
 
 def require_admin():
