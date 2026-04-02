@@ -267,6 +267,19 @@ def get_ai_task(task_id):
     return jsonify({"status": "processing"})
 
 
+def _build_all_content(store_name=None):
+    """收集同店所有筆記，合併成 all_content，每段標註來源"""
+    query = Note.query
+    if store_name:
+        query = query.filter_by(store=store_name)
+    notes = query.order_by(Note.updated_at.desc()).all()
+    parts = []
+    for n in notes:
+        source = f"【檔名：{n.store or '未分店'}店_{n.author.username if n.author else '?'}_{n.updated_at.strftime('%m%d') if n.updated_at else ''}_{n.id}】"
+        parts.append(f"{source}\n{n.title}\n{n.content}")
+    return "\n\n---\n\n".join(parts), len(notes)
+
+
 @notes_bp.route("/api/<int:note_id>/summarize", methods=["POST"])
 @login_required
 def summarize(note_id):
@@ -274,16 +287,17 @@ def summarize(note_id):
         return jsonify({"status": "error", "message": "僅限管理員"}), 403
     note = Note.query.get_or_404(note_id)
 
-    source = f"【來源：{note.store or '未分店'}店 / {note.author.username if note.author else '?'}】"
+    # 收集同店所有筆記合併，一次呼叫 API 做全體分類摘要
+    all_content, count = _build_all_content(note.store)
     prompt = (
         MANAGER_PROMPT
-        + f"\n# 待整理筆記\n\n{source}\n標題：{note.title}\n\n{note.content}"
+        + f"\n# 待整理筆記（{note.store or '未分店'}店，共 {count} 筆）\n\n{all_content}"
     )
     task_id = uuid.uuid4().hex[:12]
     _ai_tasks[task_id] = {"status": "processing"}
     import gevent
     gevent.spawn(_run_ai_task, task_id, current_app._get_current_object(),
-                 prompt, 512, note_id, "ai_summary")
+                 prompt, 2048, note_id, "ai_summary")
     return jsonify({"status": "accepted", "task_id": task_id})
 
 
@@ -294,11 +308,12 @@ def outline(note_id):
         return jsonify({"status": "error", "message": "僅限管理員"}), 403
     note = Note.query.get_or_404(note_id)
 
-    source = f"【來源：{note.store or '未分店'}店 / {note.author.username if note.author else '?'}】"
+    # 單筆大綱：只處理這一篇
+    source = f"【檔名：{note.store or '未分店'}店_{note.author.username if note.author else '?'}_{note.id}】"
     prompt = (
         MANAGER_PROMPT
         + "\n# 額外要求\n請將此筆記整理成條列式大綱，保留所有細節。\n"
-        + f"\n# 待整理筆記\n\n{source}\n標題：{note.title}\n\n{note.content}"
+        + f"\n# 待整理筆記\n\n{source}\n{note.title}\n{note.content}"
     )
     task_id = uuid.uuid4().hex[:12]
     _ai_tasks[task_id] = {"status": "processing"}
@@ -327,15 +342,14 @@ def notes_ai_summary():
     if not notes:
         return jsonify({"status": "ok", "summary": "（近期無筆記）"})
 
-    lines = []
+    # 合併所有筆記成 all_content，每段標註檔名來源
+    parts = []
     for n in notes:
-        store_tag = f"【來源：{n.store}店" if n.store else "【來源：未分店"
-        author = n.author.username if n.author else "?"
-        date_str = n.updated_at.strftime("%m/%d") if n.updated_at else ""
-        lines.append(f"{store_tag} / {author} / {date_str}】\n{n.title}\n{n.content}")
+        source = f"【檔名：{n.store or '未分店'}店_{n.author.username if n.author else '?'}_{n.updated_at.strftime('%m%d') if n.updated_at else ''}_{n.id}】"
+        parts.append(f"{source}\n{n.title}\n{n.content}")
+    all_content = "\n\n---\n\n".join(parts)
 
     store_label = f"「{store}店」" if store != "all" else "全店"
-    notes_content = "\n---\n".join(lines)
     extra = ""
     if store == "all":
         extra = "\n# 額外要求\n請在輸出最前面依「店別」分組，每組內再依上述分類排列。\n"
@@ -344,7 +358,7 @@ def notes_ai_summary():
 
     prompt = (
         MANAGER_PROMPT + extra
-        + f"\n# 待整理筆記（{store_label}近 {days} 天，共 {len(notes)} 筆）\n\n{notes_content}"
+        + f"\n# 待整理筆記（{store_label}近 {days} 天，共 {len(notes)} 筆）\n\n{all_content}"
     )
 
     task_id = uuid.uuid4().hex[:12]

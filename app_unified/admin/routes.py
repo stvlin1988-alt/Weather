@@ -19,14 +19,14 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 
 def _call_gemini(prompt: str, max_tokens: int) -> str:
-    """Gemini 2.0 Flash（免費方案），含 429 retry"""
+    """Gemini 2.5 Flash（免費方案），含 429 retry"""
     api_key = current_app.config.get("GEMINI_API_KEY", "").strip()
     if not api_key:
         raise ValueError("GEMINI_API_KEY not set")
     import time
     import logging
     import requests as _req
-    model = current_app.config.get("GEMINI_MODEL", "gemini-2.0-flash")
+    model = current_app.config.get("GEMINI_MODEL", "gemini-2.5-flash")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
