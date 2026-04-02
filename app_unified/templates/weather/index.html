@@ -15,7 +15,40 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', 'PingFang TC', sans-serif;
            background: linear-gradient(160deg, #0f2027, #203a43, #2c5364);
-           min-height: 100vh; color: #fff; display: flex; flex-direction: column; align-items: center; }
+           min-height: 100vh; color: #fff; display: flex; flex-direction: column; align-items: center;
+           transition: background 1.5s ease; position: relative; overflow-x: hidden; }
+
+    /* 天氣動態背景 */
+    body.weather-clear { background: linear-gradient(160deg, #2980b9, #6dd5fa, #f9d423); }
+    body.weather-clouds { background: linear-gradient(160deg, #4b6584, #778ca3, #a4b0be); }
+    body.weather-rain, body.weather-drizzle { background: linear-gradient(160deg, #2c3e50, #4a6274, #636e72); }
+    body.weather-thunderstorm { background: linear-gradient(160deg, #1a1a2e, #16213e, #0f3460); }
+    body.weather-snow { background: linear-gradient(160deg, #dfe6e9, #b2bec3, #636e72); }
+    body.weather-snow .weather-card-inner { background: rgba(0,0,0,.15); }
+    body.weather-snow .city-name, body.weather-snow .temp, body.weather-snow .desc { color: #fff; }
+    body.weather-mist, body.weather-fog, body.weather-haze { background: linear-gradient(160deg, #636e72, #b2bec3, #dfe6e9); }
+
+    /* 雨滴動畫 */
+    .rain-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; overflow: hidden; }
+    .raindrop { position: absolute; top: -20px; width: 2px; background: linear-gradient(transparent, rgba(255,255,255,.4)); animation: rainfall linear infinite; }
+    @keyframes rainfall { to { transform: translateY(105vh); } }
+
+    /* 雪花動畫 */
+    .snowflake { position: absolute; top: -10px; color: rgba(255,255,255,.8); font-size: 12px; animation: snowfall linear infinite; pointer-events: none; }
+    @keyframes snowfall { to { transform: translateY(105vh) rotate(360deg); } }
+
+    /* 閃電動畫 */
+    .lightning { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,.1); pointer-events: none; z-index: 0; opacity: 0; }
+    @keyframes flash { 0%,100% { opacity:0; } 5% { opacity:.8; } 10% { opacity:0; } 15% { opacity:.6; } 20% { opacity:0; } }
+
+    /* 陽光光暈 */
+    .sun-glow { position: fixed; top: -80px; right: -80px; width: 250px; height: 250px;
+      background: radial-gradient(circle, rgba(249,212,35,.3) 0%, rgba(249,212,35,.1) 40%, transparent 70%);
+      border-radius: 50%; pointer-events: none; z-index: 0; animation: sunpulse 4s ease-in-out infinite; }
+    @keyframes sunpulse { 0%,100% { transform: scale(1); opacity:.6; } 50% { transform: scale(1.15); opacity:.9; } }
+
+    /* 確保內容在動畫上層 */
+    .weather-wrap { position: relative; z-index: 1; }
 
     .weather-wrap { display: flex; flex-direction: column; align-items: center;
                     padding: 3rem 1rem 2rem; width: 100%; max-width: 420px; }
@@ -67,6 +100,79 @@
     Haze: '\ud83c\udf01', Dust: '\ud83d\udca8', Sand: '\ud83d\udca8', Ash: '\ud83c\udf0b', Tornado: '\ud83c\udf2a\ufe0f'
   };
 
+  function _applyWeatherBg(weatherMain) {
+    // 清除舊的背景 class 和動畫元素
+    document.body.className = document.body.className.replace(/weather-\S+/g, '').trim();
+    var oldEffects = document.querySelectorAll('.rain-container,.sun-glow,.lightning');
+    for (var i = 0; i < oldEffects.length; i++) oldEffects[i].parentNode.removeChild(oldEffects[i]);
+
+    var w = (weatherMain || '').toLowerCase();
+    if (w === 'clear') {
+      document.body.classList.add('weather-clear');
+      var glow = document.createElement('div');
+      glow.className = 'sun-glow';
+      document.body.appendChild(glow);
+    } else if (w === 'clouds') {
+      document.body.classList.add('weather-clouds');
+    } else if (w === 'rain' || w === 'drizzle') {
+      document.body.classList.add(w === 'rain' ? 'weather-rain' : 'weather-drizzle');
+      var rc = document.createElement('div');
+      rc.className = 'rain-container';
+      var count = w === 'rain' ? 80 : 40;
+      for (var j = 0; j < count; j++) {
+        var drop = document.createElement('div');
+        drop.className = 'raindrop';
+        drop.style.left = Math.random() * 100 + '%';
+        drop.style.height = (Math.random() * 15 + 10) + 'px';
+        drop.style.animationDuration = (Math.random() * 0.5 + 0.5) + 's';
+        drop.style.animationDelay = Math.random() * 2 + 's';
+        drop.style.opacity = Math.random() * 0.3 + 0.2;
+        rc.appendChild(drop);
+      }
+      document.body.appendChild(rc);
+    } else if (w === 'thunderstorm') {
+      document.body.classList.add('weather-thunderstorm');
+      // 雨 + 閃電
+      var rc2 = document.createElement('div');
+      rc2.className = 'rain-container';
+      for (var k = 0; k < 100; k++) {
+        var drop2 = document.createElement('div');
+        drop2.className = 'raindrop';
+        drop2.style.left = Math.random() * 100 + '%';
+        drop2.style.height = (Math.random() * 20 + 10) + 'px';
+        drop2.style.animationDuration = (Math.random() * 0.4 + 0.3) + 's';
+        drop2.style.animationDelay = Math.random() * 2 + 's';
+        drop2.style.opacity = Math.random() * 0.4 + 0.2;
+        rc2.appendChild(drop2);
+      }
+      document.body.appendChild(rc2);
+      var lightning = document.createElement('div');
+      lightning.className = 'lightning';
+      lightning.style.animation = 'flash 4s infinite';
+      lightning.style.animationDelay = (Math.random() * 3) + 's';
+      document.body.appendChild(lightning);
+    } else if (w === 'snow') {
+      document.body.classList.add('weather-snow');
+      var sc = document.createElement('div');
+      sc.className = 'rain-container';
+      var flakes = ['\u2744', '\u2022', '\u00b7'];
+      for (var f = 0; f < 50; f++) {
+        var sf = document.createElement('div');
+        sf.className = 'snowflake';
+        sf.textContent = flakes[Math.floor(Math.random() * flakes.length)];
+        sf.style.left = Math.random() * 100 + '%';
+        sf.style.fontSize = (Math.random() * 10 + 8) + 'px';
+        sf.style.animationDuration = (Math.random() * 3 + 4) + 's';
+        sf.style.animationDelay = Math.random() * 5 + 's';
+        sf.style.opacity = Math.random() * 0.5 + 0.3;
+        sc.appendChild(sf);
+      }
+      document.body.appendChild(sc);
+    } else if (w === 'mist' || w === 'fog' || w === 'haze') {
+      document.body.classList.add('weather-' + w);
+    }
+  }
+
   function renderWeatherCard(data) {
     if (data.error) {
       card.innerHTML = '<div class="weather-error">' + data.error + '</div>';
@@ -92,6 +198,9 @@
       + '  <span>\ud83c\udf21\ufe0f \u9ad4\u611f ' + feels + '\u00b0C</span>'
       + '  <span>\ud83d\udc41\ufe0f \u80fd\u898b\u5ea6 ' + visibility + ' km</span>'
       + '</div>';
+
+    // 動態背景
+    _applyWeatherBg(main);
 
     // 動態載入
     if (data.ext_ptr) {
