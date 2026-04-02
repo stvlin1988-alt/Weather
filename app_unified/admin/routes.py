@@ -93,11 +93,20 @@ def _call_anthropic(prompt: str, max_tokens: int) -> str:
 
 def call_llm(prompt: str, max_tokens: int = 2048) -> str:
     """依序嘗試：Gemini → Ollama → Anthropic"""
+    import time
+    import logging
+    logger = logging.getLogger("call_llm")
     errors = []
     for name, fn in [("Gemini", _call_gemini), ("Ollama", _call_ollama), ("Anthropic", _call_anthropic)]:
         try:
-            return fn(prompt, max_tokens)
+            logger.warning("=== LLM: trying %s ===", name)
+            t0 = time.time()
+            result = fn(prompt, max_tokens)
+            elapsed = time.time() - t0
+            logger.warning("=== LLM: %s OK, %.1f sec, %d chars ===", name, elapsed, len(result))
+            return result
         except Exception as e:
+            logger.warning("=== LLM: %s FAILED: %s ===", name, e)
             errors.append(f"{name}: {e}")
     raise ValueError("所有 AI 服務都無法使用：" + "; ".join(errors))
 
