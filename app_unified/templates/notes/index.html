@@ -78,12 +78,18 @@
 </div>
 {% endif %}
 
+{% if current_user.is_admin() %}
 <div class="store-tabs">
   <a href="{{ url_for('notes.index', status=current_status, range=current_range) }}" class="store-tab {% if not current_store %}active{% endif %}" data-store="">全部</a>
   {% for s in stores %}
   <a href="{{ url_for('notes.index', store=s, status=current_status, range=current_range) }}" class="store-tab {% if current_store == s %}active{% endif %}" data-store="{{ s }}">{{ s }}</a>
   {% endfor %}
 </div>
+{% elif current_user.store %}
+<div class="store-tabs">
+  <a href="{{ url_for('notes.index', status=current_status, range=current_range) }}" class="store-tab active" data-store="{{ current_user.store }}">{{ current_user.store }} 店</a>
+</div>
+{% endif %}
 {% set status_labels = {'':'全部狀態','pending':'待處理','in_progress':'處理中','resolved':'已解決'} %}
 <div class="status-tabs">
   {% for val, label in status_labels.items() %}
