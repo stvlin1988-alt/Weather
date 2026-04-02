@@ -209,6 +209,28 @@ def delete_note(note_id):
     return jsonify({"status": "ok"})
 
 
+MANAGER_PROMPT = """# Role
+你是一位專業的店務連鎖店總管，負責將各分店或各部門的雜亂筆記，快速整理成給老闆看的「每日彙整表」。
+
+# Task
+請將輸入的所有原始文字進行分類摘要。要求：
+1. **不准遺漏**：每個提到的事件都必須轉換成一條列點。
+2. **極度精簡**：刪除所有口語、形容詞、抱怨與重複資訊，僅保留「主語 + 動作 + 結果」。
+3. **模糊分類**：若某事項不確定分類，優先放入【店務】，若完全無關則放入【雜項】。
+
+# Categories
+- 【人事】：請假、遲到、排班、人力短缺、獎懲。
+- 【修繕】：設備故障、漏水、燈泡更換、報修進度。
+- 【店務】：進貨、庫存、營收、活動、顧客反應、環境衛生。
+- 【雜項】：不屬於上述三類的所有事項。
+
+# Output Style
+使用 Markdown 列表。範例：
+- [修繕] 廚房冰箱漏水：已請廠商週三來修。
+- [人事] 小明午班請假：已協調小華代班。
+"""
+
+
 def _run_ai_task(task_id, app, prompt, max_tokens, note_id=None, field=None):
     """在 gevent greenlet 中執行 LLM 呼叫"""
     with app.app_context():
@@ -252,13 +274,10 @@ def summarize(note_id):
         return jsonify({"status": "error", "message": "僅限管理員"}), 403
     note = Note.query.get_or_404(note_id)
 
+    source = f"【來源：{note.store or '未分店'}店 / {note.author.username if note.author else '?'}】"
     prompt = (
-        "角色與任務：你是一位高效的行政助理，請幫我整理以下這篇筆記內容，提供 3-5 句的重點摘要。\n\n"
-        "處理原則：\n"
-        "- 分類歸納：將性質相近的任務歸在同一個標題下（例如：人事管理、設備維修、待辦清單、外部聯繫等）\n"
-        "- 資訊完整：嚴禁刪減或改寫原本的細節，請確保每一條筆記的內容都完整保留\n"
-        "- 格式清爽：使用 Markdown 的標題和清單格式，讓視覺上一目了然\n\n"
-        f"待整理筆記內容：\n\n標題：{note.title}\n\n{note.content}"
+        MANAGER_PROMPT
+        + f"\n# 待整理筆記\n\n{source}\n標題：{note.title}\n\n{note.content}"
     )
     task_id = uuid.uuid4().hex[:12]
     _ai_tasks[task_id] = {"status": "processing"}
@@ -275,13 +294,11 @@ def outline(note_id):
         return jsonify({"status": "error", "message": "僅限管理員"}), 403
     note = Note.query.get_or_404(note_id)
 
+    source = f"【來源：{note.store or '未分店'}店 / {note.author.username if note.author else '?'}】"
     prompt = (
-        "角色與任務：你是一位高效的行政助理，請幫我將以下這篇筆記整理成條列式大綱。\n\n"
-        "處理原則：\n"
-        "- 分類歸納：將性質相近的任務歸在同一個標題下（例如：人事管理、設備維修、待辦清單、外部聯繫等）\n"
-        "- 資訊完整：嚴禁刪減或改寫原本的細節，請確保每一條筆記的內容都完整保留\n"
-        "- 格式清爽：使用 Markdown 的標題和清單格式，讓視覺上一目了然\n\n"
-        f"待整理筆記內容：\n\n標題：{note.title}\n\n{note.content}"
+        MANAGER_PROMPT
+        + "\n# 額外要求\n請將此筆記整理成條列式大綱，保留所有細節。\n"
+        + f"\n# 待整理筆記\n\n{source}\n標題：{note.title}\n\n{note.content}"
     )
     task_id = uuid.uuid4().hex[:12]
     _ai_tasks[task_id] = {"status": "processing"}
@@ -310,47 +327,25 @@ def notes_ai_summary():
     if not notes:
         return jsonify({"status": "ok", "summary": "（近期無筆記）"})
 
-    STATUS_LABELS = {"pending": "待處理", "in_progress": "處理中", "resolved": "已解決"}
-    PRIORITY_LABELS = {"high": "高", "medium": "中", "low": "低"}
     lines = []
     for n in notes:
-        s_label = STATUS_LABELS.get(n.status or "pending", n.status)
-        p_label = PRIORITY_LABELS.get(n.priority or "medium", n.priority)
-        store_tag = f"[{n.store}店]" if n.store else "[未分店]"
+        store_tag = f"【來源：{n.store}店" if n.store else "【來源：未分店"
         author = n.author.username if n.author else "?"
         date_str = n.updated_at.strftime("%m/%d") if n.updated_at else ""
-        lines.append(f"{store_tag}[{date_str}][{author}][{s_label}][優先:{p_label}] {n.title}\n{n.content}")
+        lines.append(f"{store_tag} / {author} / {date_str}】\n{n.title}\n{n.content}")
 
     store_label = f"「{store}店」" if store != "all" else "全店"
     notes_content = "\n---\n".join(lines)
+    extra = ""
     if store == "all":
-        prompt = (
-            "角色與任務：你是一位高效的行政助理，請幫我整理以下這些零散的筆記內容。\n\n"
-            "處理原則：\n"
-            "- 分類歸納：將性質相近的任務歸在同一個標題下（例如：人事管理、設備維修、待辦清單、外部聯繫等）\n"
-            "- 資訊完整：嚴禁刪減或改寫原本的細節，請確保每一條筆記的內容都完整保留\n"
-            "- 格式清爽：使用 Markdown 的標題和清單格式，讓視覺上一目了然\n\n"
-            "額外要求：\n"
-            "1. 第一層：依「店別」分類\n"
-            "2. 第二層：每間店內依「優先權」排列（高→中→低）\n"
-            "3. 相關的事項請合併成一條摘要，不要逐條列出\n"
-            "4. 最後給主管一個「建議優先處理順序」，說明應該先處理哪件事、為什麼\n\n"
-            f"待整理筆記內容（{store_label}近 {days} 天）：\n\n{notes_content}"
-        )
+        extra = "\n# 額外要求\n請在輸出最前面依「店別」分組，每組內再依上述分類排列。\n"
     else:
-        prompt = (
-            "角色與任務：你是一位高效的行政助理，請幫我整理以下這些零散的筆記內容。\n\n"
-            "處理原則：\n"
-            "- 分類歸納：將性質相近的任務歸在同一個標題下（例如：人事管理、設備維修、待辦清單、外部聯繫等）\n"
-            "- 資訊完整：嚴禁刪減或改寫原本的細節，請確保每一條筆記的內容都完整保留\n"
-            "- 格式清爽：使用 Markdown 的標題和清單格式，讓視覺上一目了然\n\n"
-            "額外要求：\n"
-            f"1. 先標明這是「{store}店」的摘要\n"
-            "2. 依「優先權」排列（高→中→低）\n"
-            "3. 相關的事項請合併成一條摘要，不要逐條列出\n"
-            "4. 最後給主管一個「建議優先處理順序」，說明應該先處理哪件事、為什麼\n\n"
-            f"待整理筆記內容（{store_label}近 {days} 天）：\n\n{notes_content}"
-        )
+        extra = f"\n# 額外要求\n請在輸出最前面標明這是「{store}店」的彙整。\n"
+
+    prompt = (
+        MANAGER_PROMPT + extra
+        + f"\n# 待整理筆記（{store_label}近 {days} 天，共 {len(notes)} 筆）\n\n{notes_content}"
+    )
 
     task_id = uuid.uuid4().hex[:12]
     _ai_tasks[task_id] = {"status": "processing"}
