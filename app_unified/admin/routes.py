@@ -330,6 +330,20 @@ def delete_device(device_id):
     return jsonify({"status": "ok"})
 
 
+@admin_bp.route("/devices/batch-delete", methods=["POST"])
+@login_required
+def batch_delete_devices():
+    require_admin()
+    from models import TrustedDevice
+    data = request.get_json(silent=True) or {}
+    ids = data.get("ids", [])
+    if not ids:
+        return jsonify({"status": "error", "message": "未選擇設備"}), 400
+    TrustedDevice.query.filter(TrustedDevice.id.in_(ids)).delete(synchronize_session=False)
+    db.session.commit()
+    return jsonify({"status": "ok", "deleted": len(ids)})
+
+
 # ── 店家管理 ──────────────────────────────────────────────
 
 @admin_bp.route("/stores", methods=["GET"])

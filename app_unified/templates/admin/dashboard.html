@@ -155,9 +155,13 @@ th { background: #f8f9fa; font-weight: 700; }
 </div>
 <div class="card" style="margin-top:1rem;">
   <h3>設備管理</h3>
-  <button class="btn btn-secondary" onclick="loadDevices()" style="margin-top:.5rem;">載入設備列表</button>
+  <div style="display:flex;gap:.5rem;margin-top:.5rem;flex-wrap:wrap;">
+    <button class="btn btn-secondary" onclick="loadDevices()">載入設備列表</button>
+    <button class="btn btn-danger" id="btn-batch-delete" style="display:none;font-size:.85rem;" onclick="batchDeleteDevices()">🗑 批次刪除</button>
+    <span id="batch-count" style="font-size:.82rem;color:#666;align-self:center;"></span>
+  </div>
   <table id="devices-table" style="margin-top:.75rem;display:none;">
-    <thead><tr><th>設備</th><th>狀態</th><th>綁定帳號</th><th>店別</th><th>首次出現</th><th>最後上線</th><th>操作</th></tr></thead>
+    <thead><tr><th style="width:30px;"><input type="checkbox" id="select-all-devices" onchange="toggleAllDevices(this)"></th><th>設備</th><th>狀態</th><th>綁定帳號</th><th>店別</th><th>首次出現</th><th>最後上線</th><th>操作</th></tr></thead>
     <tbody id="devices-tbody"></tbody>
   </table>
 </div>
@@ -452,6 +456,7 @@ function loadDevices() {
       }
       actions += ' <button class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .7rem;color:#dc3545;" onclick="deleteDevice(' + d.id + ')">刪除</button>';
       return '<tr>'
+        + '<td><input type="checkbox" class="device-checkbox" value="' + d.id + '" onchange="updateBatchCount()"></td>'
         + '<td>' + d.device_name + '</td>'
         + '<td>' + statusBadge + '</td>'
         + '<td>' + (d.username || '—') + '</td>'
@@ -544,6 +549,44 @@ function unrevokeDevice(id) {
 function deleteDevice(id) {
   if (!confirm('確定要刪除此設備？')) return;
   fetch('/admin/devices/' + id, { method: 'DELETE' }).then(function() { loadDevices(); });
+}
+
+function toggleAllDevices(el) {
+  var boxes = document.querySelectorAll('.device-checkbox');
+  for (var i = 0; i < boxes.length; i++) boxes[i].checked = el.checked;
+  updateBatchCount();
+}
+
+function updateBatchCount() {
+  var checked = document.querySelectorAll('.device-checkbox:checked');
+  var btn = document.getElementById('btn-batch-delete');
+  var count = document.getElementById('batch-count');
+  if (checked.length > 0) {
+    btn.style.display = 'inline-block';
+    count.textContent = '已選 ' + checked.length + ' 台';
+  } else {
+    btn.style.display = 'none';
+    count.textContent = '';
+  }
+}
+
+function batchDeleteDevices() {
+  var checked = document.querySelectorAll('.device-checkbox:checked');
+  var ids = [];
+  for (var i = 0; i < checked.length; i++) ids.push(parseInt(checked[i].value));
+  if (!ids.length) return;
+  if (!confirm('確定要刪除 ' + ids.length + ' 台設備？')) return;
+  fetch('/admin/devices/batch-delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ ids: ids })
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.status === 'ok') {
+      document.getElementById('select-all-devices').checked = false;
+      updateBatchCount();
+      loadDevices();
+    }
+  });
 }
 
 // 頁面載入時自動載入店家列表
