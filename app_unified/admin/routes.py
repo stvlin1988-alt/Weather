@@ -49,7 +49,7 @@ def _call_ollama(prompt: str, max_tokens: int) -> str:
     """Ollama 本地端模型"""
     import requests as _req
     host = current_app.config.get("OLLAMA_HOST", "http://localhost:11434")
-    model = current_app.config.get("OLLAMA_MODEL", "gemma3:4b-it-q4_K_M")
+    model = current_app.config.get("OLLAMA_MODEL", "gemma4:e2b")
     url = f"{host}/api/generate"
     payload = {
         "model": model,
