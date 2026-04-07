@@ -49,7 +49,7 @@
   <span class="save-status" id="save-status"></span>
 </div>
 <div class="card editor-wrap">
-  <input type="text" id="title-input" placeholder="筆記標題…" value="{{ note.title if note else '' }}">
+  <input type="text" id="title-input" placeholder="筆記標題…" value="{{ note.title if note else default_title }}">
   {% if note and note.updated_by %}
   <div class="updated-by-info" id="updated-by-display">由 <strong id="updated-by-name">載入中…</strong> 修改</div>
   {% endif %}

@@ -58,8 +58,11 @@ def index():
 @login_required
 def new_note():
     stores = _get_stores()
+    today = datetime.utcnow().strftime("%-m/%-d")
+    default_title = f"{today} {current_user.username}筆記"
     return render_template("notes/editor.html", note=None, stores=stores,
-                           status_choices=STATUS_CHOICES, priority_choices=PRIORITY_CHOICES)
+                           status_choices=STATUS_CHOICES, priority_choices=PRIORITY_CHOICES,
+                           default_title=default_title)
 
 
 @notes_bp.route("/api", methods=["GET"])
