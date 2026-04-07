@@ -9,6 +9,19 @@
   </div>
   {% else %}
   {% if users %}
+  <div style="margin-bottom:.75rem;">
+    <label style="display:block;font-size:.9rem;margin-bottom:.25rem;">篩選店別</label>
+    <select id="filter-store" style="font-size:1rem;padding:.4rem .6rem;border-radius:6px;border:1px solid #ddd;width:100%;min-height:36px;" onchange="filterByStore()">
+      <option value="">全部</option>
+      {% set seen_stores = [] %}
+      {% for u in users %}
+        {% if u.store and u.store not in seen_stores %}
+          {% if seen_stores.append(u.store) %}{% endif %}
+          <option value="{{ u.store }}">{{ u.store }} 店</option>
+        {% endif %}
+      {% endfor %}
+    </select>
+  </div>
   <div style="margin-bottom:1rem;">
     <label style="display:block;font-size:.9rem;margin-bottom:.25rem;">選擇使用者</label>
     <select id="target-user" style="font-size:1rem;padding:.4rem .6rem;border-radius:6px;border:1px solid #ddd;width:100%;min-height:36px;" onchange="updateUserStatus()">
@@ -38,6 +51,24 @@
 <script>
 const cam = new Camera('video', 'canvas');
 let captured = null;
+
+function filterByStore() {
+  var store = document.getElementById('filter-store').value;
+  var sel = document.getElementById('target-user');
+  var opts = sel.options;
+  var firstVisible = null;
+  for (var i = 0; i < opts.length; i++) {
+    var optStore = opts[i].getAttribute('data-store');
+    var show = !store || optStore === store;
+    opts[i].style.display = show ? '' : 'none';
+    opts[i].disabled = !show;
+    if (show && !firstVisible) firstVisible = opts[i];
+  }
+  if (sel.options[sel.selectedIndex].disabled && firstVisible) {
+    firstVisible.selected = true;
+  }
+  updateUserStatus();
+}
 
 function updateUserStatus() {
   var sel = document.getElementById('target-user');
