@@ -8,7 +8,7 @@ from admin.routes import call_llm
 
 notes_bp = Blueprint("notes", __name__, url_prefix="/notes")
 
-RANGE_DAYS = {"today": 0, "3d": 3, "5d": 5, "7d": 7}
+RANGE_DAYS = {"today": 0, "3d": 3, "7d": 7, "30d": 30}
 
 # 異步 AI 任務存儲（in-memory）
 _ai_tasks = {}
@@ -32,7 +32,7 @@ def _date_filter(query, range_param):
 def index():
     store_filter = request.args.get("store", "")
     status_filter = request.args.get("status", "")
-    range_param = request.args.get("range", "3d")
+    range_param = request.args.get("range", "today")
     stores = _get_stores()
 
     query = Note.query
@@ -67,7 +67,7 @@ def new_note():
 def list_notes():
     store_filter = request.args.get("store", "")
     status_filter = request.args.get("status", "")
-    range_param = request.args.get("range", "3d")
+    range_param = request.args.get("range", "today")
     stores = _get_stores()
 
     query = Note.query
