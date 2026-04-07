@@ -234,11 +234,11 @@ MANAGER_PROMPT = """# Role
 """
 
 
-def _run_ai_task(task_id, app, prompt, max_tokens, note_id=None, field=None):
+def _run_ai_task(task_id, app, prompt, max_tokens, note_id=None, field=None, backend="gemini"):
     """在 gevent greenlet 中執行 LLM 呼叫"""
     with app.app_context():
         try:
-            result = call_llm(prompt, max_tokens=max_tokens)
+            result = call_llm(prompt, max_tokens=max_tokens, backend=backend)
             if note_id and field:
                 note = Note.query.get(note_id)
                 if note:
@@ -364,11 +364,15 @@ def notes_ai_summary():
         + f"\n# 待整理筆記（{store_label}近 {days} 天，共 {len(notes)} 筆）\n\n{all_content}"
     )
 
+    backend = data.get("backend", "gemini")
+    if backend not in ("gemini", "ollama"):
+        backend = "gemini"
+
     task_id = uuid.uuid4().hex[:12]
     _ai_tasks[task_id] = {"status": "processing"}
     import gevent
     gevent.spawn(_run_ai_task, task_id, current_app._get_current_object(),
-                 prompt, 8192)
+                 prompt, 8192, backend=backend)
     return jsonify({"status": "accepted", "task_id": task_id})
 
 
