@@ -38,6 +38,9 @@
 .status-resolved    { background: #d5f5e3; color: #27ae60; }
 .status-tabs { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: .75rem; }
 .range-tabs { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: .75rem; }
+/* 隱私黑幕 */
+#privacy-screen { position: fixed; inset: 0; background: #000; z-index: 9999; display: none; cursor: pointer; opacity: 0; transition: opacity .4s ease; }
+#privacy-screen.visible { display: block; opacity: 1; }
 .priority-badge { display: inline-block; padding: .1rem .45rem; border-radius: 10px; font-size: .72rem; font-weight: 700; color: #fff; }
 .priority-high   { background: #e74c3c; }
 .priority-medium { background: #e67e22; }
@@ -45,6 +48,7 @@
 </style>
 {% endblock %}
 {% block content %}
+<div id="privacy-screen"></div>
 {% if not current_user.face_encoding %}
 <div class="enroll-banner">
   尚未登錄人臉。<button class="btn btn-secondary" id="btn-open-enroll" style="margin-left:.5rem;">立即登錄人臉</button>
@@ -75,6 +79,7 @@
     <span id="ai-status" style="font-size:.8rem;color:#666;"></span>
   </div>
   <div id="ai-summary-output" style="display:none;background:#f8f9fa;border:1px solid #e0e0e0;border-radius:8px;padding:1rem;margin-top:.75rem;white-space:pre-wrap;font-size:.88rem;line-height:1.6;"></div>
+  <button id="btn-save-summary" class="btn btn-success" style="display:none;margin-top:.5rem;font-size:.85rem;padding:.4rem .8rem;" onclick="saveSummaryAsNote()">💾 儲存為筆記</button>
 </div>
 {% endif %}
 
@@ -180,9 +185,13 @@ function generateSummary() {
   var btn = document.getElementById('btn-ai-summary');
   var statusEl = document.getElementById('ai-status');
   var outputEl = document.getElementById('ai-summary-output');
+  var saveBtn = document.getElementById('btn-save-summary');
   btn.disabled = true;
   statusEl.textContent = 'AI 整理中… 已等待 0 秒';
   outputEl.style.display = 'none';
+  saveBtn.style.display = 'none';
+  saveBtn.disabled = false;
+  saveBtn.textContent = '💾 儲存為筆記';
 
   fetch('/notes/ai/summary', {
     method: 'POST',
@@ -193,6 +202,7 @@ function generateSummary() {
       pollAiTask(data.task_id, function(result) {
         outputEl.textContent = result;
         outputEl.style.display = 'block';
+        saveBtn.style.display = 'inline-block';
         statusEl.textContent = '完成';
         btn.disabled = false;
       }, function(msg) {
@@ -204,6 +214,7 @@ function generateSummary() {
     } else if (data.status === 'ok') {
       outputEl.textContent = data.summary;
       outputEl.style.display = 'block';
+      saveBtn.style.display = 'inline-block';
       statusEl.textContent = '';
       btn.disabled = false;
     } else {
@@ -215,6 +226,78 @@ function generateSummary() {
     btn.disabled = false;
   });
 }
+
+function saveSummaryAsNote() {
+  var store = document.getElementById('ai-store-select').value;
+  var content = document.getElementById('ai-summary-output').textContent;
+  var saveBtn = document.getElementById('btn-save-summary');
+  var today = new Date();
+  var dateStr = today.getFullYear() + '-' +
+    String(today.getMonth() + 1).padStart(2, '0') + '-' +
+    String(today.getDate()).padStart(2, '0');
+  var title = dateStr + ' 摘要';
+
+  saveBtn.disabled = true;
+  saveBtn.textContent = '儲存中…';
+
+  fetch('/notes/api', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      title: title,
+      content: content,
+      store: store === 'all' ? '' : store,
+      status: 'pending',
+      priority: 'medium'
+    })
+  }).then(function(res) { return res.json(); }).then(function(data) {
+    if (data.id) {
+      saveBtn.textContent = '✅ 已儲存';
+    } else {
+      saveBtn.textContent = '❌ 儲存失敗';
+      saveBtn.disabled = false;
+    }
+  }).catch(function() {
+    saveBtn.textContent = '❌ 儲存失敗';
+    saveBtn.disabled = false;
+  });
+}
+</script>
+<script>
+// ── 3 分鐘隱私黑幕 ──
+(function() {
+  var PRIVACY_LIMIT = 3 * 60 * 1000;
+  var screen = document.getElementById('privacy-screen');
+  var privacyTimer = null;
+
+  function showPrivacy() {
+    screen.style.display = 'block';
+    requestAnimationFrame(function() { screen.classList.add('visible'); });
+  }
+
+  function hidePrivacy() {
+    screen.classList.remove('visible');
+    setTimeout(function() { screen.style.display = 'none'; }, 400);
+    if (typeof lastActivity !== 'undefined') lastActivity = Date.now();
+    startPrivacyTimer();
+  }
+
+  function startPrivacyTimer() {
+    clearTimeout(privacyTimer);
+    privacyTimer = setTimeout(showPrivacy, PRIVACY_LIMIT);
+  }
+
+  screen.addEventListener('click', hidePrivacy);
+
+  // 與 base.html 的 resetTimer 同步：偵測活動時重置黑幕計時
+  ['mousemove','mousedown','keydown','touchstart','scroll'].forEach(function(evt) {
+    document.addEventListener(evt, function() {
+      if (!screen.classList.contains('visible')) startPrivacyTimer();
+    });
+  });
+
+  startPrivacyTimer();
+})();
 </script>
 <script src="{{ url_for('static', filename='js/camera.js') }}"></script>
 <script>
