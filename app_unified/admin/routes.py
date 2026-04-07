@@ -32,17 +32,17 @@ def _call_gemini(prompt: str, max_tokens: int) -> str:
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"maxOutputTokens": max_tokens},
     }
-    for attempt in range(3):
+    for attempt in range(5):
         resp = _req.post(url, json=payload, timeout=120)
         if resp.status_code == 429:
-            wait = (attempt + 1) * 10
-            logging.getLogger("call_llm").warning("=== Gemini 429, retry in %ds ===", wait)
+            wait = (attempt + 1) * 15
+            logging.getLogger("call_llm").warning("=== Gemini 429, retry %d/5 in %ds ===", attempt + 1, wait)
             time.sleep(wait)
             continue
         resp.raise_for_status()
         data = resp.json()
         return data["candidates"][0]["content"]["parts"][0]["text"]
-    resp.raise_for_status()
+    raise Exception("Gemini API 持續 429，請稍後再試")
 
 
 def call_llm(prompt: str, max_tokens: int = 8192) -> str:
