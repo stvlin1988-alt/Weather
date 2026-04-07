@@ -27,7 +27,7 @@ class Config:
 
     # Gemini (Google AI, free tier with 1.5 Flash)
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
 
     # Cloudflare R2 (S3-compatible)
     R2_ENDPOINT_URL = os.getenv("R2_ENDPOINT_URL", "")
