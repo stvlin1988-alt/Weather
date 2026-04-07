@@ -28,7 +28,8 @@ def settings():
     if not current_user.is_admin():
         from flask import abort
         abort(403)
-    return render_template("face_enroll.html")
+    users = User.query.order_by(User.username).all()
+    return render_template("face_enroll.html", users=users)
 
 
 def _decode_image(image_b64: str):
@@ -54,7 +55,13 @@ def enroll():
         if not encodings:
             return jsonify({"status": "error", "message": "未偵測到人臉，請重試"}), 422
 
-        user = current_user
+        target_user_id = data.get("user_id")
+        if target_user_id and current_user.is_admin():
+            user = User.query.get(target_user_id)
+            if not user:
+                return jsonify({"status": "error", "message": "找不到該使用者"}), 404
+        else:
+            user = current_user
         user.set_face_encoding(encodings[0])
 
         # Upload photo to Cloudflare R2 (private bucket)
