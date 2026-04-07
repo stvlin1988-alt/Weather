@@ -45,39 +45,16 @@ def _call_gemini(prompt: str, max_tokens: int) -> str:
     resp.raise_for_status()
 
 
-def _call_ollama(prompt: str, max_tokens: int) -> str:
-    """Ollama 本地端模型"""
-    import requests as _req
-    host = current_app.config.get("OLLAMA_HOST", "http://localhost:11434")
-    model = current_app.config.get("OLLAMA_MODEL", "gemma4:e2b")
-    url = f"{host}/api/generate"
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "options": {
-            "num_predict": max_tokens,
-            "num_thread": 2,
-        },
-    }
-    resp = _req.post(url, json=payload, timeout=600)
-    resp.raise_for_status()
-    return resp.json()["response"]
-
-
-def call_llm(prompt: str, max_tokens: int = 8192, backend: str = "gemini") -> str:
-    """LLM 呼叫，支援 gemini / ollama"""
+def call_llm(prompt: str, max_tokens: int = 8192) -> str:
+    """使用 Gemini 2.5 Flash"""
     import time
     import logging
     logger = logging.getLogger("call_llm")
-    logger.warning("=== LLM: calling %s ===", backend)
+    logger.warning("=== LLM: calling Gemini ===")
     t0 = time.time()
-    if backend == "ollama":
-        result = _call_ollama(prompt, max_tokens)
-    else:
-        result = _call_gemini(prompt, max_tokens)
+    result = _call_gemini(prompt, max_tokens)
     elapsed = time.time() - t0
-    logger.warning("=== LLM: %s OK, %.1f sec, %d chars ===", backend, elapsed, len(result))
+    logger.warning("=== LLM: Gemini OK, %.1f sec, %d chars ===", elapsed, len(result))
     return result
 
 
