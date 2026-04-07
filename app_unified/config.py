@@ -29,6 +29,10 @@ class Config:
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
+    # Ollama configuration
+    OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:e2b")
+
 
     # Cloudflare R2 (S3-compatible)
     R2_ENDPOINT_URL = os.getenv("R2_ENDPOINT_URL", "")
