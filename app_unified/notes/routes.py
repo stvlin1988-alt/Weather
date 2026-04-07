@@ -38,10 +38,11 @@ def index():
     query = Note.query
     if current_user.is_admin():
         if store_filter in stores:
-            query = query.filter_by(store=store_filter)
+            # 選特定店時，也顯示標記為「全部」（store=None）的筆記
+            query = query.filter(db.or_(Note.store == store_filter, Note.store.is_(None)))
     else:
-        # 一般 user 只能看自己店的筆記
-        query = query.filter_by(store=current_user.store)
+        # 一般 user 只能看自己店的筆記 + 全部筆記
+        query = query.filter(db.or_(Note.store == current_user.store, Note.store.is_(None)))
 
     query = _date_filter(query, range_param)
     if status_filter in STATUS_CHOICES:
