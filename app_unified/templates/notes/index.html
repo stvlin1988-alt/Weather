@@ -131,7 +131,7 @@
       <span class="priority-badge priority-{{ note.priority or 'medium' }}">{{ plabels.get(note.priority or 'medium', note.priority) }}</span>
     </div>
     <div class="meta" style="margin-top:.2rem;">
-      <span style="font-size:.72rem;color:#bbb;">{{ note.author.username if note.author else '—' }} · {{ note.created_at | fmt_date }}</span>
+      <span style="font-size:.85rem;color:#888;font-weight:600;">{{ note.author.username if note.author else '—' }} · {{ note.created_at | fmt_date }}</span>
     </div>
   </div>
   {% endfor %}
