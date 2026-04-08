@@ -43,8 +43,11 @@ def register_ws_events(socketio):
         range_param = data.get('range', '3d')
         stores = _get_stores()
         query = Note.query
-        if store_filter in stores:
-            query = query.filter_by(store=store_filter)
+        if current_user.is_admin():
+            if store_filter in stores:
+                query = query.filter_by(store=store_filter)
+        else:
+            query = query.filter_by(store=current_user.store)
         range_days = {'today': 0, '3d': 3, '5d': 5, '7d': 7}
         days = range_days.get(range_param, 3)
         if days == 0:

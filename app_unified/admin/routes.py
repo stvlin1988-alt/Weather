@@ -157,6 +157,8 @@ def set_role(user_id):
     role = data.get("role", "user")
     if role not in ("super_admin", "admin", "user"):
         return jsonify({"status": "error", "message": "角色無效"}), 400
+    if role == "super_admin" and not current_user.is_super_admin():
+        return jsonify({"status": "error", "message": "僅 super_admin 可指派此角色"}), 403
     user.role = role
     db.session.commit()
     return jsonify({"status": "ok"})

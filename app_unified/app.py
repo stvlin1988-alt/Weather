@@ -26,7 +26,7 @@ def create_app():
     db.init_app(app)
     login_manager.init_app(app)
     limiter.init_app(app)
-    socketio.init_app(app, cors_allowed_origins="*", async_mode="gevent")
+    socketio.init_app(app, cors_allowed_origins=app.config["ALLOWED_ORIGINS"], async_mode="gevent")
 
     @login_manager.user_loader
     def load_user(user_id):
