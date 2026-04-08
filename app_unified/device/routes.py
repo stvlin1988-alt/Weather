@@ -8,25 +8,12 @@ device_bp = Blueprint("device", __name__, url_prefix="/api/v1")
 
 
 def is_device_authorized(fp):
-    """檢查設備是否已授權且未掛失，同時考慮店別 OFF"""
+    """檢查設備是否已授權且未掛失（不限定綁定使用者）"""
     if not fp:
         return False
     device = TrustedDevice.query.filter_by(fingerprint=fp).first()
     if not device or not device.is_approved or device.is_revoked:
         return False
-    if not device.user_id:
-        return False
-    user = User.query.get(device.user_id)
-    if not user or not user.is_active:
-        return False
-    # super_admin 不受店別 OFF 影響
-    if user.is_super_admin():
-        return True
-    # admin 和 user 都受店別 OFF 影響
-    if user.store:
-        store = Store.query.filter_by(name=user.store).first()
-        if store and not store.login_enabled:
-            return False
     return True
 
 
