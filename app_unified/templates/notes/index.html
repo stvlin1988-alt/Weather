@@ -64,12 +64,17 @@
 <div class="card" style="margin-bottom:1rem;">
   <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
     <strong style="font-size:.95rem;">🤖 AI 摘要</strong>
+    {% if current_user.is_super_admin() %}
     <select id="ai-store-select" style="font-size:.85rem;padding:.3rem .5rem;border-radius:6px;border:1px solid #ddd;min-height:36px;">
       <option value="all">全店</option>
       {% for s in stores %}
       <option value="{{ s }}">{{ s }} 店</option>
       {% endfor %}
     </select>
+    {% else %}
+    <input type="hidden" id="ai-store-select" value="{{ current_user.store }}">
+    <span style="font-size:.85rem;color:#666;">{{ current_user.store }} 店</span>
+    {% endif %}
     <select id="ai-days-select" style="font-size:.85rem;padding:.3rem .5rem;border-radius:6px;border:1px solid #ddd;min-height:36px;">
       <option value="1" selected>近 1 天</option>
       <option value="3">近 3 天</option>
@@ -83,7 +88,7 @@
 </div>
 {% endif %}
 
-{% if current_user.is_admin() %}
+{% if current_user.is_super_admin() %}
 <div class="store-tabs">
   <a href="{{ url_for('notes.index', status=current_status, range=current_range) }}" class="store-tab {% if not current_store %}active{% endif %}" data-store="">全部</a>
   {% for s in stores %}
@@ -92,7 +97,7 @@
 </div>
 {% elif current_user.store %}
 <div class="store-tabs">
-  <a href="{{ url_for('notes.index', status=current_status, range=current_range) }}" class="store-tab active" data-store="{{ current_user.store }}">{{ current_user.store }} 店</a>
+  <a href="{{ url_for('notes.index') }}" class="store-tab active" data-store="{{ current_user.store }}">{{ current_user.store }} 店</a>
 </div>
 {% endif %}
 {% set priority_labels = {'':'全部優先權','high':'高','medium':'中','low':'低'} %}

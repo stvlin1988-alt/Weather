@@ -43,9 +43,11 @@ def register_ws_events(socketio):
         range_param = data.get('range', '3d')
         stores = _get_stores()
         query = Note.query
-        if current_user.is_admin():
+        if current_user.is_super_admin():
             if store_filter in stores:
                 query = query.filter_by(store=store_filter)
+        elif current_user.is_admin():
+            query = query.filter_by(store=current_user.store)
         else:
             query = query.filter_by(store=current_user.store)
         from notes.routes import _get_business_day_range
@@ -72,8 +74,10 @@ def register_ws_events(socketio):
     def _create_note(data):
         stores = _get_stores()
         now = datetime.utcnow()
-        if current_user.is_admin():
+        if current_user.is_super_admin():
             store = data.get('store') if data.get('store') in stores else None
+        elif current_user.is_admin():
+            store = current_user.store
         else:
             store = current_user.store if current_user.store in stores else None
         status = data.get('status') if data.get('status') in STATUS_CHOICES else 'pending'
@@ -91,10 +95,12 @@ def register_ws_events(socketio):
 
     def _update_note(data):
         note_id = data.get('id')
-        if current_user.is_admin():
+        if current_user.is_super_admin():
             note = Note.query.get(note_id)
+        elif current_user.is_admin():
+            note = Note.query.filter_by(id=note_id, store=current_user.store).first()
         else:
-            note = Note.query.filter_by(id=note_id, user_id=current_user.id).first()
+            note = Note.query.filter_by(id=note_id, store=current_user.store).first()
         if not note:
             emit('r', {'op': 'er', 'message': 'not found'})
             return
@@ -106,7 +112,7 @@ def register_ws_events(socketio):
         if 'content' in data and data['content'] != note.content:
             diff_parts.append(f"內容長度: {len(note.content)} → {len(data['content'])} 字")
             note.content = data['content']
-        if 'store' in data and current_user.is_admin():
+        if 'store' in data and current_user.is_super_admin():
             note.store = data['store'] if data['store'] in stores else None
         if 'status' in data and data['status'] in STATUS_CHOICES:
             if data['status'] != note.status:
@@ -127,10 +133,12 @@ def register_ws_events(socketio):
 
     def _delete_note(data):
         note_id = data.get('id')
-        if current_user.is_admin():
+        if current_user.is_super_admin():
             note = Note.query.get(note_id)
+        elif current_user.is_admin():
+            note = Note.query.filter_by(id=note_id, store=current_user.store).first()
         else:
-            note = Note.query.filter_by(id=note_id, user_id=current_user.id).first()
+            note = Note.query.filter_by(id=note_id, store=current_user.store).first()
         if not note:
             emit('r', {'op': 'er', 'message': 'not found'})
             return
@@ -142,10 +150,12 @@ def register_ws_events(socketio):
 
     def _get_note(data):
         note_id = data.get('id')
-        if current_user.is_admin():
+        if current_user.is_super_admin():
             note = Note.query.get(note_id)
+        elif current_user.is_admin():
+            note = Note.query.filter_by(id=note_id, store=current_user.store).first()
         else:
-            note = Note.query.filter_by(id=note_id, user_id=current_user.id).first()
+            note = Note.query.filter_by(id=note_id, store=current_user.store).first()
         if not note:
             emit('r', {'op': 'er', 'message': 'not found'})
             return

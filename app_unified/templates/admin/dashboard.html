@@ -34,10 +34,14 @@ th { background: #f8f9fa; font-weight: 700; }
   <h3>🤖 AI 店務摘要</h3>
   <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-top:.75rem;">
     <select id="ai-store-select" style="font-size:.9rem;padding:.4rem .6rem;border-radius:6px;border:1px solid #ddd;min-height:36px;">
+      {% if current_user.is_super_admin() %}
       <option value="all">全店</option>
       {% for s in stores %}
       <option value="{{ s }}">{{ s }} 店</option>
       {% endfor %}
+      {% else %}
+      <option value="{{ current_user.store }}">{{ current_user.store }} 店</option>
+      {% endif %}
     </select>
     <select id="ai-days-select" style="font-size:.9rem;padding:.4rem .6rem;border-radius:6px;border:1px solid #ddd;min-height:36px;">
       <option value="1">近 1 天</option>

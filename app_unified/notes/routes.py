@@ -64,10 +64,12 @@ def index():
 
     query = Note.query
 
-    # 店別範圍（始終套用）— 暫時保留現有邏輯，後續任務會修改
-    if current_user.is_admin():
+    # 店別範圍
+    if current_user.is_super_admin():
         if store_filter in stores:
             query = query.filter_by(store=store_filter)
+    elif current_user.is_admin():
+        query = query.filter_by(store=current_user.store)
     else:
         query = query.filter_by(store=current_user.store)
 
@@ -118,9 +120,11 @@ def list_notes():
     stores = _get_stores()
 
     query = Note.query
-    if current_user.is_admin():
+    if current_user.is_super_admin():
         if store_filter in stores:
             query = query.filter_by(store=store_filter)
+    elif current_user.is_admin():
+        query = query.filter_by(store=current_user.store)
     else:
         query = query.filter_by(store=current_user.store)
 
@@ -151,8 +155,10 @@ def create_note():
     data = request.get_json(silent=True) or {}
     stores = _get_stores()
     now = datetime.utcnow()
-    if current_user.is_admin():
+    if current_user.is_super_admin():
         store = data.get("store") if data.get("store") in stores else None
+    elif current_user.is_admin():
+        store = current_user.store
     else:
         store = current_user.store if current_user.store in stores else None
     status = data.get("status") if data.get("status") in STATUS_CHOICES else "pending"
@@ -175,8 +181,10 @@ def create_note():
 @notes_bp.route("/api/<int:note_id>", methods=["GET"])
 @login_required
 def get_note(note_id):
-    if current_user.is_admin():
+    if current_user.is_super_admin():
         note = Note.query.get_or_404(note_id)
+    elif current_user.is_admin():
+        note = Note.query.filter_by(id=note_id, store=current_user.store).first_or_404()
     else:
         note = Note.query.filter_by(id=note_id, store=current_user.store).first_or_404()
     updater = None
@@ -198,8 +206,10 @@ def get_note(note_id):
 @notes_bp.route("/api/<int:note_id>", methods=["PUT"])
 @login_required
 def update_note(note_id):
-    if current_user.is_admin():
+    if current_user.is_super_admin():
         note = Note.query.get_or_404(note_id)
+    elif current_user.is_admin():
+        note = Note.query.filter_by(id=note_id, store=current_user.store).first_or_404()
     else:
         note = Note.query.filter_by(id=note_id, store=current_user.store).first_or_404()
     data = request.get_json(silent=True) or {}
@@ -214,7 +224,7 @@ def update_note(note_id):
         new_len = len(data["content"])
         diff_parts.append(f"內容長度: {old_len} → {new_len} 字")
         note.content = data["content"]
-    if "store" in data and current_user.is_admin():
+    if "store" in data and current_user.is_super_admin():
         note.store = data["store"] if data["store"] in stores else None
     if "status" in data and data["status"] in STATUS_CHOICES:
         if data["status"] != note.status:
@@ -246,8 +256,10 @@ def update_note(note_id):
 @notes_bp.route("/api/<int:note_id>", methods=["DELETE"])
 @login_required
 def delete_note(note_id):
-    if current_user.is_admin():
+    if current_user.is_super_admin():
         note = Note.query.get_or_404(note_id)
+    elif current_user.is_admin():
+        note = Note.query.filter_by(id=note_id, store=current_user.store).first_or_404()
     else:
         note = Note.query.filter_by(id=note_id, store=current_user.store).first_or_404()
     log = NoteLog(
@@ -383,6 +395,9 @@ def notes_ai_summary():
         return jsonify({"status": "error", "message": "僅限管理員"}), 403
     data = request.get_json(silent=True) or {}
     store = data.get("store", "all")
+    # Admin 只能摘要自己的店
+    if current_user.is_admin() and not current_user.is_super_admin():
+        store = current_user.store
     days = int(data.get("days", 7))
     if days == 1:
         start_utc, end_utc = _get_business_day_range()
@@ -431,8 +446,10 @@ def notes_ai_summary():
 @notes_bp.route("/<int:note_id>")
 @login_required
 def edit_note(note_id):
-    if current_user.is_admin():
+    if current_user.is_super_admin():
         note = Note.query.get_or_404(note_id)
+    elif current_user.is_admin():
+        note = Note.query.filter_by(id=note_id, store=current_user.store).first_or_404()
     else:
         note = Note.query.filter_by(id=note_id, store=current_user.store).first_or_404()
     stores = _get_stores()

@@ -53,12 +53,19 @@
   {% if note and note.updated_by %}
   <div class="updated-by-info" id="updated-by-display">由 <strong id="updated-by-name">載入中…</strong> 修改</div>
   {% endif %}
-  {% if current_user.is_admin() %}
+  {% if current_user.is_super_admin() %}
   <div class="store-selector">
     <label>店別：</label>
     {% for s in ['B','C','D','E','F','G','J','JJ','K','Q','S'] %}
     <button class="store-btn {% if (note and note.store == s) or (not note and current_user.store == s) %}selected{% endif %}" data-store="{{ s }}" type="button" onclick="selectStore(this)">{{ s }}</button>
     {% endfor %}
+  </div>
+  {% elif current_user.is_admin() %}
+  <div class="store-display">
+    店別：
+    {% if current_user.store %}
+    <span class="store-badge-inline" style="background:var(--store-color-{{ current_user.store }}, #999);">{{ current_user.store }} 店</span>
+    {% endif %}
   </div>
   {% else %}
   <div class="store-display">
