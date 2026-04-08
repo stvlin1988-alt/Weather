@@ -58,25 +58,42 @@ def _date_filter(query, range_param):
 def index():
     store_filter = request.args.get("store", "")
     status_filter = request.args.get("status", "")
-    range_param = request.args.get("range", "today")
+    range_param = request.args.get("range", "")
+    priority_filter = request.args.get("priority", "")
     stores = _get_stores()
 
     query = Note.query
+
+    # 店別範圍（始終套用）— 暫時保留現有邏輯，後續任務會修改
     if current_user.is_admin():
         if store_filter in stores:
             query = query.filter_by(store=store_filter)
     else:
-        # 一般 user 只能看自己店的筆記
         query = query.filter_by(store=current_user.store)
 
-    query = _date_filter(query, range_param)
-    if status_filter in STATUS_CHOICES:
+    # 互斥篩選：優先權、狀態、日期範圍，一次只套用一組
+    active_filter = None
+    if priority_filter and priority_filter in PRIORITY_CHOICES:
+        active_filter = 'priority'
+        query = query.filter_by(priority=priority_filter)
+    elif status_filter and status_filter in STATUS_CHOICES:
+        active_filter = 'status'
         query = query.filter_by(status=status_filter)
+    else:
+        active_filter = 'range'
+        if not range_param:
+            range_param = 'today'
+        query = _date_filter(query, range_param)
+
     notes = query.order_by(Note.updated_at.desc()).all()
 
     return render_template("notes/index.html", notes=notes, stores=stores,
-                           current_store=store_filter, status_choices=STATUS_CHOICES,
-                           current_status=status_filter, current_range=range_param,
+                           current_store=store_filter,
+                           current_status=status_filter,
+                           current_range=range_param,
+                           current_priority=priority_filter,
+                           active_filter=active_filter,
+                           status_choices=STATUS_CHOICES,
                            priority_choices=PRIORITY_CHOICES)
 
 
@@ -96,7 +113,8 @@ def new_note():
 def list_notes():
     store_filter = request.args.get("store", "")
     status_filter = request.args.get("status", "")
-    range_param = request.args.get("range", "today")
+    range_param = request.args.get("range", "")
+    priority_filter = request.args.get("priority", "")
     stores = _get_stores()
 
     query = Note.query
@@ -106,9 +124,15 @@ def list_notes():
     else:
         query = query.filter_by(store=current_user.store)
 
-    query = _date_filter(query, range_param)
-    if status_filter in STATUS_CHOICES:
+    if priority_filter and priority_filter in PRIORITY_CHOICES:
+        query = query.filter_by(priority=priority_filter)
+    elif status_filter and status_filter in STATUS_CHOICES:
         query = query.filter_by(status=status_filter)
+    else:
+        if not range_param:
+            range_param = 'today'
+        query = _date_filter(query, range_param)
+
     notes = query.order_by(Note.updated_at.desc()).all()
 
     return jsonify([{
