@@ -105,6 +105,50 @@ th { background: #f8f9fa; font-weight: 700; }
   </table>
 </div>
 <div class="card" style="margin-top:1rem;">
+  <h3>新增人員</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-top:.75rem;">
+    <div>
+      <label style="font-size:.85rem;font-weight:600;">帳號名稱</label>
+      <input type="text" id="new-user-username" class="form-control">
+    </div>
+    <div>
+      <label style="font-size:.85rem;font-weight:600;">PIN 碼（4位數）</label>
+      <input type="password" id="new-user-pin" maxlength="4" inputmode="numeric" class="form-control">
+    </div>
+    <div>
+      <label style="font-size:.85rem;font-weight:600;">店別</label>
+      <select id="new-user-store" class="form-control">
+        <option value="">— 請選擇 —</option>
+        {% for s in stores %}
+        <option value="{{ s }}">{{ s }} 店</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label style="font-size:.85rem;font-weight:600;">權限</label>
+      <select id="new-user-role" class="form-control" onchange="toggleNewUserStore(this.value)">
+        <option value="user">一般使用者</option>
+        <option value="admin">管理員（綁店）</option>
+        {% if current_user.is_super_admin() %}
+        <option value="super_admin">超級管理員（不綁店）</option>
+        {% endif %}
+      </select>
+    </div>
+  </div>
+  <div style="margin-top:.75rem;">
+    <label style="font-size:.85rem;font-weight:600;">人臉登錄</label>
+    <button class="btn btn-secondary" id="new-user-cam-btn" onclick="startNewUserCamera()" style="font-size:.85rem;margin-left:.5rem;">開啟鏡頭</button>
+  </div>
+  <video id="new-user-video" autoplay playsinline muted style="width:100%;max-width:320px;border-radius:8px;background:#000;display:none;margin-top:.5rem;"></video>
+  <canvas id="new-user-canvas" style="display:none;"></canvas>
+  <button class="btn btn-secondary" id="new-user-capture-btn" style="display:none;font-size:.85rem;margin-top:.5rem;" onclick="captureNewUserFace()">拍照</button>
+  <img id="new-user-preview" style="display:none;width:80px;border-radius:6px;border:2px solid #27ae60;margin-top:.5rem;">
+  <div style="margin-top:.75rem;">
+    <button class="btn btn-primary" onclick="submitNewUser()" style="min-width:120px;">建立帳號</button>
+    <span id="new-user-msg" style="font-size:.9rem;margin-left:.5rem;"></span>
+  </div>
+</div>
+<div class="card" style="margin-top:1rem;">
   <h3>最近筆記（前20篇）</h3>
   <table>
     {% set slabels = {'pending':'待處理','in_progress':'處理中','resolved':'已解決'} %}
@@ -415,6 +459,8 @@ function submitApprove() {
   var role = document.getElementById('approve-role').value;
   var msgEl = document.getElementById('approve-msg');
   if (!username || !pin) { msgEl.textContent = '請填寫帳號和 PIN'; msgEl.style.color = '#dc3545'; return; }
+  var role = document.getElementById('approve-role').value;
+  if (role !== 'super_admin' && !store) { msgEl.textContent = 'admin 和 user 必須選擇店別'; msgEl.style.color = '#dc3545'; return; }
   if (!approveFaceImage) { msgEl.textContent = '請先拍攝人臉'; msgEl.style.color = '#dc3545'; return; }
   msgEl.textContent = '處理中…';
   msgEl.style.color = '#666';
@@ -490,6 +536,74 @@ function batchDeleteDevices() {
       loadDevices();
     }
   });
+}
+
+// ── 新增人員 ──
+var newUserStream = null;
+var newUserFaceImage = null;
+
+function toggleNewUserStore(role) {
+  var storeSelect = document.getElementById('new-user-store');
+  if (role === 'super_admin') {
+    storeSelect.value = '';
+    storeSelect.disabled = true;
+  } else {
+    storeSelect.disabled = false;
+  }
+}
+
+function startNewUserCamera() {
+  var video = document.getElementById('new-user-video');
+  video.style.display = 'block';
+  document.getElementById('new-user-capture-btn').style.display = 'inline-block';
+  document.getElementById('new-user-cam-btn').disabled = true;
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+    .catch(function() { return navigator.mediaDevices.getUserMedia({ video: true, audio: false }); })
+    .then(function(s) { newUserStream = s; video.srcObject = s; })
+    .catch(function() { document.getElementById('new-user-msg').textContent = '無法開啟鏡頭'; });
+}
+
+function captureNewUserFace() {
+  var video = document.getElementById('new-user-video');
+  var canvas = document.getElementById('new-user-canvas');
+  if (!newUserStream || video.readyState < 2) return;
+  canvas.width = video.videoWidth || 640;
+  canvas.height = video.videoHeight || 480;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  newUserFaceImage = canvas.toDataURL('image/jpeg', 0.85);
+  var preview = document.getElementById('new-user-preview');
+  preview.src = newUserFaceImage;
+  preview.style.display = 'block';
+}
+
+function submitNewUser() {
+  var username = document.getElementById('new-user-username').value.trim();
+  var pin = document.getElementById('new-user-pin').value.trim();
+  var store = document.getElementById('new-user-store').value;
+  var role = document.getElementById('new-user-role').value;
+  var msgEl = document.getElementById('new-user-msg');
+
+  if (!username || !pin) { msgEl.textContent = '請填寫帳號和 PIN'; msgEl.style.color = '#dc3545'; return; }
+  if (role !== 'super_admin' && !store) { msgEl.textContent = 'admin 和 user 必須選擇店別'; msgEl.style.color = '#dc3545'; return; }
+
+  msgEl.textContent = '建立中…';
+  msgEl.style.color = '#666';
+
+  fetch('/admin/users/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: username, pin: pin, store: store, role: role, face_image: newUserFaceImage })
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.status === 'ok') {
+      msgEl.textContent = '帳號建立成功！';
+      msgEl.style.color = '#28a745';
+      if (newUserStream) { newUserStream.getTracks().forEach(function(t) { t.stop(); }); newUserStream = null; }
+      setTimeout(function() { location.reload(); }, 1200);
+    } else {
+      msgEl.textContent = data.message || '建立失敗';
+      msgEl.style.color = '#dc3545';
+    }
+  }).catch(function() { msgEl.textContent = '連線錯誤'; msgEl.style.color = '#dc3545'; });
 }
 
 // 頁面載入時自動載入店家列表

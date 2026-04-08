@@ -86,15 +86,30 @@ def create_user():
     pin = str(data.get("pin") or "").strip()
     face_image = data.get("face_image")
     store = (data.get("store") or "").strip()
+    role = data.get("role", "user")
 
     if not username or not pin:
         return jsonify({"status": "error", "message": "請填寫帳號和 PIN"}), 400
 
+    if role not in ("super_admin", "admin", "user"):
+        role = "user"
+
+    # admin/user 必須選擇店別
+    valid_stores = [s.name for s in Store.query.all()]
+    if role in ("admin", "user") and store not in valid_stores:
+        return jsonify({"status": "error", "message": "admin 和 user 必須選擇店別"}), 400
+
+    if role == "super_admin" and not current_user.is_super_admin():
+        return jsonify({"status": "error", "message": "僅 super_admin 可建立此角色"}), 403
+
     if User.query.filter_by(username=username).first():
         return jsonify({"status": "error", "message": "帳號已存在"}), 409
 
-    valid_stores = [s.name for s in Store.query.all()]
-    user = User(username=username, store=store if store in valid_stores else None)
+    user = User(
+        username=username,
+        role=role,
+        store=store if store in valid_stores else None,
+    )
     user.set_password(pin)
 
     if face_image and FACE_RECOGNITION_AVAILABLE:
@@ -108,7 +123,7 @@ def create_user():
             pass
 
     db.session.add(user)
-    db.session.flush()  # get user.id before upload
+    db.session.flush()
 
     if face_image:
         try:
@@ -271,6 +286,11 @@ def approve_device(device_id):
 
     if not username or not pin:
         return jsonify({"status": "error", "message": "請填寫帳號和 PIN"}), 400
+
+    if role in ("admin", "user"):
+        valid_stores = [s.name for s in Store.query.all()]
+        if store not in valid_stores:
+            return jsonify({"status": "error", "message": "admin 和 user 必須選擇店別"}), 400
 
     if User.query.filter_by(username=username).first():
         return jsonify({"status": "error", "message": "帳號已存在"}), 409
