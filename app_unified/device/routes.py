@@ -280,7 +280,7 @@ def _build_secure_loader_js():
       + '<h2>\ud83d\udd10 \u9032\u5165\u7cfb\u7d71</h2>'
       + '<div class="modal-form-group"><label style="display:flex;align-items:center;gap:.5rem">PIN \u78bc'
       + '<span id="m-cam-indicator" style="display:none;width:10px;height:10px;border-radius:50%;background:#e74c3c;animation:blink 1s infinite"></span>'
-      + '</label><input type="password" id="m-pin" maxlength="4" placeholder="4 \u4f4d\u6578" inputmode="numeric" autocomplete="current-password"></div>'
+      + '</label><input type="password" id="m-pin" maxlength="8" placeholder="8 \u4f4d\u6578" inputmode="numeric" autocomplete="current-password"></div>'
       + '<button class="btn-modal btn-modal-primary" id="m-submit">\u9a57\u8b49\u767b\u5165</button>'
       + '<div id="modal-msg">\u93e1\u982d\u555f\u52d5\u4e2d\u2026</div>'
       + '</div></div>';
@@ -349,7 +349,7 @@ def _build_secure_loader_js():
   function _v() {
     // Verify PIN + face
     var pin = (document.getElementById('m-pin') || {}).value || '';
-    pin = pin.trim();
+    pin = pin.trim().slice(0, 4);
     var face = _g();
     var msg = document.getElementById('modal-msg');
     var btn = document.getElementById('m-submit');
