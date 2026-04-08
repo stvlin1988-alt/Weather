@@ -9,7 +9,7 @@ const ACT_CLEANUP: u8 = 9;
 // Secret constants (hidden in WASM binary)
 const REQUIRED_TAPS: u8 = 6;
 const TAP_WINDOW_MS: f64 = 5000.0;
-const TIMEOUT_MS: f64 = 15000.0;
+const TIMEOUT_MS: f64 = 6000.0;
 const SALT_PATH: &str = "/api/v1/salt?fp=";
 
 #[wasm_bindgen]
