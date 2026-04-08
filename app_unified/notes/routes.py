@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, render_template, current_app
 from flask_login import login_required, current_user
 from extensions import db
@@ -9,6 +9,31 @@ from admin.routes import call_llm
 notes_bp = Blueprint("notes", __name__, url_prefix="/notes")
 
 RANGE_DAYS = {"today": 0, "3d": 3, "7d": 7, "30d": 30}
+
+_TW = timezone(timedelta(hours=8))
+
+
+def _get_business_day_range():
+    """回傳目前營業日的 (start, end)，以 UTC 表示（無 tzinfo）。"""
+    now_tw = datetime.now(_TW)
+    if now_tw.hour >= 8:
+        start_tw = now_tw.replace(hour=8, minute=0, second=0, microsecond=0)
+    else:
+        start_tw = (now_tw - timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
+    end_tw = start_tw + timedelta(days=1)
+    start_utc = start_tw.astimezone(timezone.utc).replace(tzinfo=None)
+    end_utc = end_tw.astimezone(timezone.utc).replace(tzinfo=None)
+    return start_utc, end_utc
+
+
+def _get_business_day_label():
+    """回傳營業日的日期字串（YYYY-MM-DD），供顯示用。"""
+    now_tw = datetime.now(_TW)
+    if now_tw.hour >= 8:
+        return now_tw.strftime("%Y-%m-%d")
+    else:
+        return (now_tw - timedelta(days=1)).strftime("%Y-%m-%d")
+
 
 # 異步 AI 任務存儲（in-memory）
 _ai_tasks = {}
@@ -21,10 +46,11 @@ def _get_stores():
 def _date_filter(query, range_param):
     days = RANGE_DAYS.get(range_param, 3)
     if days == 0:
-        since = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        start_utc, end_utc = _get_business_day_range()
+        return query.filter(Note.updated_at >= start_utc, Note.updated_at < end_utc)
     else:
         since = datetime.utcnow() - timedelta(days=days)
-    return query.filter(Note.updated_at >= since)
+        return query.filter(Note.updated_at >= since)
 
 
 @notes_bp.route("/")
@@ -334,10 +360,16 @@ def notes_ai_summary():
     data = request.get_json(silent=True) or {}
     store = data.get("store", "all")
     days = int(data.get("days", 7))
-    since = datetime.utcnow() - timedelta(days=days)
+    if days == 1:
+        start_utc, end_utc = _get_business_day_range()
+    else:
+        start_utc = datetime.utcnow() - timedelta(days=days)
+        end_utc = None
 
     valid_stores = [s.name for s in Store.query.all()]
-    query = Note.query.filter(Note.updated_at >= since)
+    query = Note.query.filter(Note.updated_at >= start_utc)
+    if end_utc:
+        query = query.filter(Note.updated_at < end_utc)
     if store != "all" and store in valid_stores:
         query = query.filter_by(store=store)
     notes = query.order_by(Note.store, Note.updated_at.desc()).all()

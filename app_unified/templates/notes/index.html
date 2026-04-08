@@ -231,10 +231,13 @@ function saveSummaryAsNote() {
   var store = document.getElementById('ai-store-select').value;
   var content = document.getElementById('ai-summary-output').textContent;
   var saveBtn = document.getElementById('btn-save-summary');
-  var today = new Date();
-  var dateStr = today.getFullYear() + '-' +
-    String(today.getMonth() + 1).padStart(2, '0') + '-' +
-    String(today.getDate()).padStart(2, '0');
+  var now = new Date();
+  var twHour = (now.getUTCHours() + 8) % 24;
+  var bizDate = new Date(now.getTime() + 8 * 3600000);
+  if (twHour < 8) bizDate.setDate(bizDate.getDate() - 1);
+  var dateStr = bizDate.getFullYear() + '-' +
+    String(bizDate.getMonth() + 1).padStart(2, '0') + '-' +
+    String(bizDate.getDate()).padStart(2, '0');
   var title = dateStr + ' 摘要';
 
   saveBtn.disabled = true;
