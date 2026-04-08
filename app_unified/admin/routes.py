@@ -68,7 +68,10 @@ def require_admin():
 def dashboard():
     require_admin()
     users = User.query.order_by(User.created_at.desc()).all()
-    notes = Note.query.order_by(Note.updated_at.desc()).limit(20).all()
+    if current_user.is_super_admin():
+        notes = Note.query.order_by(Note.updated_at.desc()).limit(20).all()
+    else:
+        notes = Note.query.filter_by(store=current_user.store).order_by(Note.updated_at.desc()).limit(20).all()
     stores = [s.name for s in Store.query.order_by(Store.name).all()]
     return render_template("admin/dashboard.html", users=users, notes=notes,
                            stores=stores, status_choices=STATUS_CHOICES)
@@ -183,6 +186,9 @@ def store_summary():
     require_admin()
     data = request.get_json(silent=True) or {}
     store = data.get("store", "all")
+    # admin 不能摘要「全店」
+    if not current_user.is_super_admin() and store == "all":
+        store = current_user.store
     days = int(data.get("days", 7))
     since = datetime.utcnow() - timedelta(days=days)
 

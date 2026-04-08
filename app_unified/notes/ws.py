@@ -167,8 +167,8 @@ def register_ws_events(socketio):
             'id': note.id, 'title': note.title, 'content': note.content,
             'store': note.store, 'status': note.status or 'pending',
             'priority': note.priority or 'medium', 'updated_by': updater,
-            'created_at': n.created_at.isoformat() if n.created_at else '',
-            'updated_at': n.updated_at.isoformat() if n.updated_at else '',
+            'created_at': note.created_at.isoformat() if note.created_at else '',
+            'updated_at': note.updated_at.isoformat() if note.updated_at else '',
         }})
 
     def _ai_summary(data):
