@@ -54,7 +54,8 @@
                     padding: 3rem 1rem 2rem; width: 100%; max-width: 420px; }
     h1.weather-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.25rem;
                        cursor: default; user-select: none; opacity: .85; letter-spacing: .1em; }
-    #tap-target { cursor: default; }
+    #tap-target { cursor: default; -webkit-tap-highlight-color: transparent; user-select: none; outline: none; pointer-events: auto; }
+    #tap-target:active, #tap-target:focus { outline: none; background: none; opacity: 1; }
     .weather-subtitle { font-size: .95rem; opacity: .6; margin-bottom: 2rem; }
 
     .weather-card-inner { background: rgba(255,255,255,.12); backdrop-filter: blur(12px);
