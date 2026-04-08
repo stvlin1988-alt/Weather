@@ -202,7 +202,9 @@ th { background: #f8f9fa; font-weight: 700; }
       <select id="approve-role" class="form-control">
         <option value="user">一般使用者</option>
         <option value="admin">管理員（綁店）</option>
+        {% if current_user.is_super_admin() %}
         <option value="super_admin">超級管理員（不綁店）</option>
+        {% endif %}
       </select>
     </div>
     <div style="margin-bottom:.5rem;">

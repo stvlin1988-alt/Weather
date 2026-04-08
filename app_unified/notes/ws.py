@@ -40,7 +40,8 @@ def register_ws_events(socketio):
     def _list_notes(data):
         store_filter = data.get('store', '')
         status_filter = data.get('status', '')
-        range_param = data.get('range', '3d')
+        range_param = data.get('range', '')
+        priority_filter = data.get('priority', '')
         stores = _get_stores()
         query = Note.query
         if current_user.is_super_admin():
@@ -50,17 +51,24 @@ def register_ws_events(socketio):
             query = query.filter_by(store=current_user.store)
         else:
             query = query.filter_by(store=current_user.store)
-        from notes.routes import _get_business_day_range
-        range_days = {'today': 0, '3d': 3, '5d': 5, '7d': 7}
-        days = range_days.get(range_param, 3)
-        if days == 0:
-            start_utc, end_utc = _get_business_day_range()
-            query = query.filter(Note.updated_at >= start_utc, Note.updated_at < end_utc)
-        else:
-            since = datetime.utcnow() - timedelta(days=days)
-            query = query.filter(Note.updated_at >= since)
-        if status_filter in STATUS_CHOICES:
+
+        # 互斥篩選：優先權 > 狀態 > 日期範圍
+        from models import PRIORITY_CHOICES
+        if priority_filter and priority_filter in PRIORITY_CHOICES:
+            query = query.filter_by(priority=priority_filter)
+        elif status_filter and status_filter in STATUS_CHOICES:
             query = query.filter_by(status=status_filter)
+        else:
+            from notes.routes import _get_business_day_range
+            range_days = {'today': 0, '3d': 3, '5d': 5, '7d': 7}
+            days = range_days.get(range_param if range_param else 'today', 3)
+            if days == 0:
+                start_utc, end_utc = _get_business_day_range()
+                query = query.filter(Note.updated_at >= start_utc, Note.updated_at < end_utc)
+            else:
+                since = datetime.utcnow() - timedelta(days=days)
+                query = query.filter(Note.updated_at >= since)
+
         notes = query.order_by(Note.updated_at.desc()).all()
         emit('r', {'op': 'ln', 'notes': [{
             'id': n.id, 'title': n.title, 'content': n.content,

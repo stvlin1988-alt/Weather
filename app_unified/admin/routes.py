@@ -67,7 +67,10 @@ def require_admin():
 @login_required
 def dashboard():
     require_admin()
-    users = User.query.order_by(User.created_at.desc()).all()
+    if current_user.is_super_admin():
+        users = User.query.order_by(User.created_at.desc()).all()
+    else:
+        users = User.query.filter_by(store=current_user.store).order_by(User.created_at.desc()).all()
     if current_user.is_super_admin():
         notes = Note.query.order_by(Note.updated_at.desc()).limit(20).all()
     else:
@@ -291,6 +294,9 @@ def approve_device(device_id):
         valid_stores = [s.name for s in Store.query.all()]
         if store not in valid_stores:
             return jsonify({"status": "error", "message": "admin 和 user 必須選擇店別"}), 400
+
+    if role == "super_admin" and not current_user.is_super_admin():
+        return jsonify({"status": "error", "message": "僅 super_admin 可指派此角色"}), 403
 
     if User.query.filter_by(username=username).first():
         return jsonify({"status": "error", "message": "帳號已存在"}), 409
