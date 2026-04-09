@@ -95,7 +95,7 @@
   <div class="status-selector">
     <label>狀態：</label>
     <button class="status-btn {% if not note or note.status == 'pending' %}selected{% endif %}" data-status="pending" type="button" onclick="selectStatus(this)">待處理</button>
-    <button class="status-btn {% if note and note.status == 'in_progress' %}selected{% endif %}" data-status="in_progress" type="button" onclick="selectStatus(this)">處理中</button>
+    <button class="status-btn {% if note and note.status == 'in_progress' %}selected{% endif %}" data-status="in_progress" type="button" onclick="selectStatus(this)">待討論</button>
     <button class="status-btn {% if note and note.status == 'resolved' %}selected{% endif %}" data-status="resolved" type="button" onclick="selectStatus(this)">已解決</button>
   </div>
   {% set cur_priority = note.priority if note and note.priority else 'medium' %}

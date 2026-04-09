@@ -42,6 +42,7 @@ def register_ws_events(socketio):
         status_filter = data.get('status', '')
         range_param = data.get('range', '')
         priority_filter = data.get('priority', '')
+        keyword = (data.get('q') or '').strip()
         stores = _get_stores()
         query = Note.query
         if current_user.is_super_admin():
@@ -52,9 +53,12 @@ def register_ws_events(socketio):
         else:
             query = query.filter_by(store=current_user.store)
 
-        # 互斥篩選：優先權 > 狀態 > 日期範圍
+        # 互斥篩選：關鍵字 > 優先權 > 狀態 > 日期範圍
         from models import PRIORITY_CHOICES
-        if priority_filter and priority_filter in PRIORITY_CHOICES:
+        if keyword:
+            like = f"%{keyword}%"
+            query = query.filter(db.or_(Note.title.ilike(like), Note.content.ilike(like)))
+        elif priority_filter and priority_filter in PRIORITY_CHOICES:
             query = query.filter_by(priority=priority_filter)
         elif status_filter and status_filter in STATUS_CHOICES:
             query = query.filter_by(status=status_filter)

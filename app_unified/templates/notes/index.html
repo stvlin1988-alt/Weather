@@ -100,6 +100,15 @@
   <a href="{{ url_for('notes.index') }}" class="store-tab active" data-store="{{ current_user.store }}">{{ current_user.store }} 店</a>
 </div>
 {% endif %}
+<form method="get" action="{{ url_for('notes.index') }}" style="display:flex;gap:.4rem;margin-bottom:.75rem;align-items:center;">
+  <span style="font-size:.85rem;color:#666;">關鍵字：</span>
+  {% if current_store %}<input type="hidden" name="store" value="{{ current_store }}">{% endif %}
+  <input type="text" name="q" value="{{ current_keyword or '' }}" placeholder="搜尋標題/內容…" style="flex:1;max-width:300px;padding:.4rem .6rem;border:1px solid #ddd;border-radius:6px;font-size:.9rem;min-height:36px;">
+  <button type="submit" class="btn btn-primary" style="padding:.35rem .8rem;font-size:.85rem;min-height:36px;">搜尋</button>
+  {% if active_filter == 'keyword' %}
+  <a href="{{ url_for('notes.index', store=current_store) }}" class="btn btn-secondary" style="padding:.35rem .8rem;font-size:.85rem;min-height:36px;">清除</a>
+  {% endif %}
+</form>
 {% set priority_labels = {'':'全部優先權','high':'高','medium':'中','low':'低'} %}
 <div class="range-tabs">
   <span style="font-size:.85rem;color:#666;align-self:center;margin-right:.25rem;">優先權：</span>
@@ -118,7 +127,7 @@
      style="{% if active_filter == 'range' and current_range == val %}background:#2c3e50;color:#fff;{% endif %}">{{ label }}</a>
   {% endfor %}
 </div>
-{% set status_labels = {'':'全部狀態','pending':'待處理','in_progress':'處理中','resolved':'已解決'} %}
+{% set status_labels = {'':'全部狀態','pending':'待處理','in_progress':'待討論','resolved':'已解決'} %}
 <div class="status-tabs">
   {% for val, label in status_labels.items() %}
   <a href="{{ url_for('notes.index', store=current_store, status=val) }}"
@@ -139,7 +148,7 @@
     <div class="meta">
       <span>{{ note.updated_at | fmt_date }}</span>
       {% if note.store %}<span class="store-badge badge-{{ note.store }}">{{ note.store }}</span>{% endif %}
-      {% set slabels = {'pending':'待處理','in_progress':'處理中','resolved':'已解決'} %}
+      {% set slabels = {'pending':'待處理','in_progress':'待討論','resolved':'已解決'} %}
       <span class="status-badge status-{{ note.status or 'pending' }}">{{ slabels.get(note.status or 'pending', note.status) }}</span>
       {% set plabels = {'high':'高','medium':'中','low':'低'} %}
       <span class="priority-badge priority-{{ note.priority or 'medium' }}">{{ plabels.get(note.priority or 'medium', note.priority) }}</span>

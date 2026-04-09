@@ -151,7 +151,7 @@ th { background: #f8f9fa; font-weight: 700; }
 <div class="card" style="margin-top:1rem;">
   <h3>最近筆記（前20篇）</h3>
   <table>
-    {% set slabels = {'pending':'待處理','in_progress':'處理中','resolved':'已解決'} %}
+    {% set slabels = {'pending':'待處理','in_progress':'待討論','resolved':'已解決'} %}
     <thead><tr><th>ID</th><th>使用者</th><th>店別</th><th>標題</th><th>狀態</th><th>更新時間</th></tr></thead>
     <tbody>
     {% for note in notes %}

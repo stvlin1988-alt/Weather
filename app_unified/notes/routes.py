@@ -60,6 +60,7 @@ def index():
     status_filter = request.args.get("status", "")
     range_param = request.args.get("range", "")
     priority_filter = request.args.get("priority", "")
+    keyword = request.args.get("q", "").strip()
     stores = _get_stores()
 
     query = Note.query
@@ -73,9 +74,13 @@ def index():
     else:
         query = query.filter_by(store=current_user.store)
 
-    # 互斥篩選：優先權、狀態、日期範圍，一次只套用一組
+    # 互斥篩選：關鍵字 > 優先權 > 狀態 > 日期範圍
     active_filter = None
-    if priority_filter and priority_filter in PRIORITY_CHOICES:
+    if keyword:
+        active_filter = 'keyword'
+        like = f"%{keyword}%"
+        query = query.filter(db.or_(Note.title.ilike(like), Note.content.ilike(like)))
+    elif priority_filter and priority_filter in PRIORITY_CHOICES:
         active_filter = 'priority'
         query = query.filter_by(priority=priority_filter)
     elif status_filter and status_filter in STATUS_CHOICES:
@@ -94,6 +99,7 @@ def index():
                            current_status=status_filter,
                            current_range=range_param,
                            current_priority=priority_filter,
+                           current_keyword=keyword,
                            active_filter=active_filter,
                            status_choices=STATUS_CHOICES,
                            priority_choices=PRIORITY_CHOICES)
@@ -117,6 +123,7 @@ def list_notes():
     status_filter = request.args.get("status", "")
     range_param = request.args.get("range", "")
     priority_filter = request.args.get("priority", "")
+    keyword = request.args.get("q", "").strip()
     stores = _get_stores()
 
     query = Note.query
@@ -128,7 +135,10 @@ def list_notes():
     else:
         query = query.filter_by(store=current_user.store)
 
-    if priority_filter and priority_filter in PRIORITY_CHOICES:
+    if keyword:
+        like = f"%{keyword}%"
+        query = query.filter(db.or_(Note.title.ilike(like), Note.content.ilike(like)))
+    elif priority_filter and priority_filter in PRIORITY_CHOICES:
         query = query.filter_by(priority=priority_filter)
     elif status_filter and status_filter in STATUS_CHOICES:
         query = query.filter_by(status=status_filter)
@@ -463,7 +473,7 @@ def upload_attachment_api():
     elif current_user.is_admin():
         note = Note.query.filter_by(id=note_id, store=current_user.store).first()
     else:
-        note = Note.query.filter_by(id=note_id, user_id=current_user.id, store=current_user.store).first()
+        note = Note.query.filter_by(id=note_id, store=current_user.store).first()
     if not note:
         return jsonify({"status": "error", "message": "筆記不存在或無權限"}), 404
 
@@ -559,11 +569,7 @@ def delete_attachment_api(attachment_id):
     can_delete = False
     if current_user.is_super_admin():
         can_delete = True
-    elif current_user.is_admin() and note.store == current_user.store:
-        can_delete = True
-    elif attachment.user_id == current_user.id:
-        can_delete = True
-    elif note.user_id == current_user.id:
+    elif note.store == current_user.store:
         can_delete = True
 
     if not can_delete:
