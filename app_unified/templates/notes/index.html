@@ -286,21 +286,32 @@ function saveSummaryAsNote() {
   var PRIVACY_LIMIT = 3 * 60 * 1000;
   var screen = document.getElementById('privacy-screen');
   var privacyTimer = null;
+  var lastInteraction = Date.now();
 
   function showPrivacy() {
     screen.style.display = 'block';
     requestAnimationFrame(function() { screen.classList.add('visible'); });
   }
 
+  function showPrivacyInstant() {
+    screen.style.transition = 'none';
+    screen.style.display = 'block';
+    screen.classList.add('visible');
+    // 下一幀恢復 transition，讓之後的 hide 有動畫
+    requestAnimationFrame(function() { screen.style.transition = ''; });
+  }
+
   function hidePrivacy() {
     screen.classList.remove('visible');
     setTimeout(function() { screen.style.display = 'none'; }, 400);
     if (typeof lastActivity !== 'undefined') lastActivity = Date.now();
+    lastInteraction = Date.now();
     startPrivacyTimer();
   }
 
   function startPrivacyTimer() {
     clearTimeout(privacyTimer);
+    lastInteraction = Date.now();
     privacyTimer = setTimeout(showPrivacy, PRIVACY_LIMIT);
   }
 
@@ -309,8 +320,18 @@ function saveSummaryAsNote() {
   // 與 base.html 的 resetTimer 同步：偵測活動時重置黑幕計時
   ['mousemove','mousedown','keydown','touchstart','scroll'].forEach(function(evt) {
     document.addEventListener(evt, function() {
-      if (!screen.classList.contains('visible')) startPrivacyTimer();
+      if (!screen.classList.contains('visible')) {
+        lastInteraction = Date.now();
+        startPrivacyTimer();
+      }
     });
+  });
+
+  // 手機螢幕亮起時：超過 3 分鐘立刻無動畫蓋黑幕，避免筆記內容閃現
+  document.addEventListener('visibilitychange', function() {
+    if (!document.hidden && (Date.now() - lastInteraction >= PRIVACY_LIMIT)) {
+      showPrivacyInstant();
+    }
   });
 
   startPrivacyTimer();

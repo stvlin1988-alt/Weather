@@ -13,20 +13,22 @@
   <title>今天天氣</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Segoe UI', 'PingFang TC', sans-serif;
-           background: linear-gradient(160deg, #0f2027, #203a43, #2c5364);
+    body { font-family: -apple-system, 'SF Pro Display', 'PingFang TC', 'Segoe UI', sans-serif;
+           background: linear-gradient(180deg, #0f2027, #203a43, #2c5364);
            min-height: 100vh; color: #fff; display: flex; flex-direction: column; align-items: center;
            transition: background 1.5s ease; position: relative; overflow-x: hidden; }
 
     /* 天氣動態背景 */
-    body.weather-clear { background: linear-gradient(160deg, #2980b9, #6dd5fa, #f9d423); }
-    body.weather-clouds { background: linear-gradient(160deg, #4b6584, #778ca3, #a4b0be); }
-    body.weather-rain, body.weather-drizzle { background: linear-gradient(160deg, #2c3e50, #4a6274, #636e72); }
-    body.weather-thunderstorm { background: linear-gradient(160deg, #1a1a2e, #16213e, #0f3460); }
-    body.weather-snow { background: linear-gradient(160deg, #dfe6e9, #b2bec3, #636e72); }
-    body.weather-snow .weather-card-inner { background: rgba(0,0,0,.15); }
-    body.weather-snow .city-name, body.weather-snow .temp, body.weather-snow .desc { color: #fff; }
-    body.weather-mist, body.weather-fog, body.weather-haze { background: linear-gradient(160deg, #636e72, #b2bec3, #dfe6e9); }
+    body.weather-clear { background: linear-gradient(180deg, #1a8fe3, #47a8f5, #87ceeb); }
+    body.weather-clouds { background: linear-gradient(180deg, #4b6584, #6b8299, #8e9eaf); }
+    body.weather-rain, body.weather-drizzle { background: linear-gradient(180deg, #3d4f5f, #506a7a, #637e8e); }
+    body.weather-thunderstorm { background: linear-gradient(180deg, #1a1a2e, #16213e, #0f3460); }
+    body.weather-snow { background: linear-gradient(180deg, #7f8fa6, #a4b0be, #dcdde1); }
+    body.weather-mist, body.weather-fog, body.weather-haze { background: linear-gradient(180deg, #636e72, #95a5a6, #b2bec3); }
+
+    /* 文字陰影確保可讀性 */
+    .text-shadow { text-shadow: 0 1px 4px rgba(0,0,0,.3); }
+    .text-shadow-strong { text-shadow: 0 2px 8px rgba(0,0,0,.4); }
 
     /* 雨滴動畫 */
     .rain-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; overflow: hidden; }
@@ -47,62 +49,121 @@
       border-radius: 50%; pointer-events: none; z-index: 0; animation: sunpulse 4s ease-in-out infinite; }
     @keyframes sunpulse { 0%,100% { transform: scale(1); opacity:.6; } 50% { transform: scale(1.15); opacity:.9; } }
 
-    /* 確保內容在動畫上層 */
-    .weather-wrap { position: relative; z-index: 1; }
+    /* 主容器 */
+    .weather-wrap { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center;
+                    padding: 2.5rem 1.25rem 2rem; width: 100%; max-width: 420px; }
 
-    .weather-wrap { display: flex; flex-direction: column; align-items: center;
-                    padding: 3rem 1rem 2rem; width: 100%; max-width: 420px; }
-    h1.weather-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.25rem;
-                       cursor: default; user-select: none; opacity: .85; letter-spacing: .1em; }
+    /* 頂部標題區（隱藏入口用） */
+    h1.weather-title { font-size: 0.85rem; font-weight: 400; letter-spacing: .15em; opacity: .5;
+                       cursor: default; user-select: none; margin-bottom: 1.5rem; }
     #tap-target { cursor: default; -webkit-tap-highlight-color: transparent; user-select: none; outline: none; pointer-events: auto; }
     #tap-target:active, #tap-target:focus { outline: none; background: none; opacity: 1; }
-    .weather-subtitle { font-size: .95rem; opacity: .6; margin-bottom: 2rem; }
 
-    .weather-card-inner { background: rgba(255,255,255,.12); backdrop-filter: blur(12px);
-                           border: 1px solid rgba(255,255,255,.2);
-                           border-radius: 20px; padding: 2rem 2.5rem; text-align: center;
-                           width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,.3); }
-    .city-name { font-size: 1.3rem; font-weight: 600; margin-bottom: .4rem; opacity: .9; }
-    .temp { font-size: 5rem; font-weight: 700; margin: .25rem 0; line-height: 1; }
-    .desc { font-size: 1.1rem; opacity: .8; text-transform: capitalize; margin-bottom: 1.25rem; }
-    .weather-icon { font-size: 3.5rem; margin: .5rem 0; }
-    .details { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem 1rem;
-               text-align: left; font-size: .9rem; opacity: .8; margin-top: .5rem; }
-    .details span { display: flex; align-items: center; gap: .35rem; }
-    .loading { opacity: .6; font-size: 1.1rem; padding: 2rem 0; }
-    .weather-error { background: rgba(255,100,100,.2); padding: 1rem 1.5rem; border-radius: 8px; }
-    .aqi-block { margin-top: 1.2rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,.2);
-                 text-align: center; }
-    .aqi-label { font-size: .75rem; opacity: .7; margin-bottom: .3rem; letter-spacing: .05em; }
-    .aqi-level { font-size: 2.5rem; font-weight: 700; line-height: 1; }
-    .aqi-detail { font-size: .85rem; opacity: .75; margin-top: .3rem; }
+    /* 主要天氣區：城市 + 溫度 + 描述 */
+    .hero-section { text-align: center; margin-bottom: 2rem; width: 100%; }
+    .city-name { font-size: 2rem; font-weight: 500; letter-spacing: .05em; margin-bottom: .25rem; }
+    .temp-main { font-size: 6.5rem; font-weight: 200; line-height: 1; margin: .15rem 0; letter-spacing: -4px; }
+    .desc { font-size: 1.25rem; font-weight: 400; opacity: .9; margin-bottom: .4rem; }
+    .temp-range { font-size: 1.15rem; font-weight: 400; opacity: .85; }
+
+    /* 毛玻璃卡片通用 */
+    .glass-card { background: rgba(255,255,255,.12); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+                  border: 1px solid rgba(255,255,255,.18); border-radius: 16px;
+                  padding: 1.25rem 1.5rem; width: 100%; margin-bottom: 1rem;
+                  box-shadow: 0 4px 24px rgba(0,0,0,.15); }
+
+    /* 詳細資訊格狀排列 */
+    .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+    .detail-item { display: flex; flex-direction: column; }
+    .detail-label { font-size: 0.8rem; opacity: .6; margin-bottom: .3rem; text-transform: uppercase; letter-spacing: .05em; }
+    .detail-value { font-size: 1.5rem; font-weight: 500; }
+    .detail-unit { font-size: 0.85rem; opacity: .7; font-weight: 400; }
+
+    /* AQI 區塊 */
+    .aqi-section { display: flex; align-items: center; gap: 1rem; }
+    .aqi-circle { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+                  font-size: 1.1rem; font-weight: 700; flex-shrink: 0; border: 2px solid rgba(255,255,255,.3); }
+    .aqi-info { flex: 1; }
+    .aqi-title { font-size: 0.8rem; opacity: .6; margin-bottom: .2rem; }
+    .aqi-level-text { font-size: 1.4rem; font-weight: 600; }
+    .aqi-pm25 { font-size: 0.9rem; opacity: .7; margin-top: .15rem; }
+
+    /* 載入與錯誤 */
+    .loading { opacity: .6; font-size: 1.1rem; padding: 3rem 0; text-align: center; }
+    .weather-error { background: rgba(255,100,100,.15); padding: 1rem 1.5rem; border-radius: 12px; text-align: center; }
+
+    /* 隱藏初始佔位 */
+    .hero-section, .details-section, .aqi-card { display: none; }
+    .hero-section.show, .details-section.show, .aqi-card.show { display: block; }
   </style>
 </head>
 <body>
 <div class="weather-wrap">
-  <h1 class="weather-title">
+  <h1 class="weather-title text-shadow">
     <span>今</span><span id="tap-target">天</span><span>天氣</span>
   </h1>
-  <p class="weather-subtitle" id="location-text">正在取得位置…</p>
-  <div class="weather-card-inner" id="weather-card">
-    <div class="loading">🌐 載入天氣資料中…</div>
+
+  <!-- 主要天氣顯示 -->
+  <div class="hero-section text-shadow-strong" id="hero-section">
+    <div class="city-name" id="city-name"></div>
+    <div class="temp-main" id="temp-main"></div>
+    <div class="desc" id="weather-desc"></div>
+    <div class="temp-range" id="temp-range"></div>
+  </div>
+
+  <!-- 載入中 -->
+  <div id="loading-block">
+    <div class="loading">載入天氣資料中…</div>
+  </div>
+
+  <!-- 錯誤 -->
+  <div id="error-block" style="display:none;width:100%;"></div>
+
+  <!-- 詳細資訊 -->
+  <div class="glass-card details-section" id="details-section">
+    <div class="details-grid">
+      <div class="detail-item">
+        <span class="detail-label">體感溫度</span>
+        <span class="detail-value" id="d-feels"></span>
+      </div>
+      <div class="detail-item">
+        <span class="detail-label">濕度</span>
+        <span class="detail-value" id="d-humidity"></span>
+      </div>
+      <div class="detail-item">
+        <span class="detail-label">風速</span>
+        <span class="detail-value" id="d-wind"></span>
+      </div>
+      <div class="detail-item">
+        <span class="detail-label">能見度</span>
+        <span class="detail-value" id="d-visibility"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 空氣品質 -->
+  <div class="glass-card aqi-card" id="aqi-card">
+    <div class="aqi-section">
+      <div class="aqi-circle" id="aqi-circle"></div>
+      <div class="aqi-info">
+        <div class="aqi-title">空氣品質</div>
+        <div class="aqi-level-text" id="aqi-level-text"></div>
+        <div class="aqi-pm25" id="aqi-pm25"></div>
+      </div>
+    </div>
   </div>
 </div>
 
 <script src="/static/js/fingerprint.js"></script>
 <script>
 (function() {
-  var card = document.getElementById('weather-card');
-  var locText = document.getElementById('location-text');
-
-  var weatherIcons = {
-    Thunderstorm: '\u26c8\ufe0f', Drizzle: '\ud83c\udf26\ufe0f', Rain: '\ud83c\udf27\ufe0f', Snow: '\u2744\ufe0f',
-    Clear: '\u2600\ufe0f', Clouds: '\u2601\ufe0f', Mist: '\ud83c\udf2b\ufe0f', Fog: '\ud83c\udf2b\ufe0f',
-    Haze: '\ud83c\udf01', Dust: '\ud83d\udca8', Sand: '\ud83d\udca8', Ash: '\ud83c\udf0b', Tornado: '\ud83c\udf2a\ufe0f'
-  };
+  var heroSection = document.getElementById('hero-section');
+  var loadingBlock = document.getElementById('loading-block');
+  var errorBlock = document.getElementById('error-block');
+  var detailsSection = document.getElementById('details-section');
+  var aqiCard = document.getElementById('aqi-card');
 
   function _applyWeatherBg(weatherMain) {
-    // 清除舊的背景 class 和動畫元素
     document.body.className = document.body.className.replace(/weather-\S+/g, '').trim();
     var oldEffects = document.querySelectorAll('.rain-container,.sun-glow,.lightning');
     for (var i = 0; i < oldEffects.length; i++) oldEffects[i].parentNode.removeChild(oldEffects[i]);
@@ -133,7 +194,6 @@
       document.body.appendChild(rc);
     } else if (w === 'thunderstorm') {
       document.body.classList.add('weather-thunderstorm');
-      // 雨 + 閃電
       var rc2 = document.createElement('div');
       rc2.className = 'rain-container';
       for (var k = 0; k < 100; k++) {
@@ -175,32 +235,38 @@
   }
 
   function renderWeatherCard(data) {
+    loadingBlock.style.display = 'none';
+
     if (data.error) {
-      card.innerHTML = '<div class="weather-error">' + data.error + '</div>';
+      errorBlock.style.display = 'block';
+      errorBlock.innerHTML = '<div class="weather-error">' + data.error + '</div>';
       return;
     }
-    locText.textContent = data.name || locText.textContent;
+
     var main = data.weather && data.weather[0] ? data.weather[0].main : '';
-    var icon = weatherIcons[main] || '\ud83c\udf10';
+    var desc = data.weather && data.weather[0] ? data.weather[0].description : '';
+    var temp = data.main && data.main.temp != null ? Math.round(data.main.temp) : 0;
+    var tempMax = data.main && data.main.temp_max != null ? Math.round(data.main.temp_max) : '--';
+    var tempMin = data.main && data.main.temp_min != null ? Math.round(data.main.temp_min) : '--';
     var humidity = data.main && data.main.humidity != null ? data.main.humidity : '--';
     var wind = data.wind && data.wind.speed != null ? data.wind.speed : '--';
     var feels = data.main && data.main.feels_like != null ? Math.round(data.main.feels_like) : '--';
     var visibility = data.visibility != null ? (data.visibility / 1000).toFixed(1) : '--';
-    var desc = data.weather && data.weather[0] ? data.weather[0].description : '';
-    var temp = data.main && data.main.temp != null ? Math.round(data.main.temp) : 0;
-    card.innerHTML = ''
-      + '<div class="city-name">\ud83d\udccd ' + (data.name || '') + '</div>'
-      + '<div class="weather-icon">' + icon + '</div>'
-      + '<div class="temp">' + temp + '\u00b0C</div>'
-      + '<div class="desc">' + desc + '</div>'
-      + '<div class="details">'
-      + '  <span>\ud83d\udca7 \u6fd5\u5ea6 ' + humidity + '%</span>'
-      + '  <span>\ud83d\udca8 \u98a8\u901f ' + wind + ' m/s</span>'
-      + '  <span>\ud83c\udf21\ufe0f \u9ad4\u611f ' + feels + '\u00b0C</span>'
-      + '  <span>\ud83d\udc41\ufe0f \u80fd\u898b\u5ea6 ' + visibility + ' km</span>'
-      + '</div>';
 
-    // 動態背景
+    // Hero 區
+    document.getElementById('city-name').textContent = data.name || '';
+    document.getElementById('temp-main').textContent = temp + '\u00b0';
+    document.getElementById('weather-desc').textContent = desc;
+    document.getElementById('temp-range').textContent = '\u6700\u9ad8 ' + tempMax + '\u00b0  \u6700\u4f4e ' + tempMin + '\u00b0';
+    heroSection.classList.add('show');
+
+    // 詳細資訊
+    document.getElementById('d-feels').innerHTML = feels + '<span class="detail-unit">\u00b0C</span>';
+    document.getElementById('d-humidity').innerHTML = humidity + '<span class="detail-unit">%</span>';
+    document.getElementById('d-wind').innerHTML = wind + ' <span class="detail-unit">m/s</span>';
+    document.getElementById('d-visibility').innerHTML = visibility + ' <span class="detail-unit">km</span>';
+    detailsSection.classList.add('show');
+
     _applyWeatherBg(main);
 
     // 動態載入
@@ -217,16 +283,17 @@
     var aqi = item.main.aqi;
     var pm25 = item.components && item.components.pm2_5 != null ? item.components.pm2_5.toFixed(1) : '--';
     var levels = ['', '\u597d', '\u4e2d\u7b49', '\u4e0d\u826f', '\u5dee', '\u975e\u5e38\u5dee'];
-    var colors = ['', '#2ecc71', '#f1c40f', '#e74c3c', '#e74c3c', '#e74c3c'];
+    var colors = ['', '#2ecc71', '#f1c40f', '#e67e22', '#e74c3c', '#8e44ad'];
     var label = levels[aqi] || '--';
     var color = colors[aqi] || '#fff';
-    var block = document.createElement('div');
-    block.className = 'aqi-block';
-    block.innerHTML = ''
-      + '<div class="aqi-label">\ud83c\udf2b\ufe0f \u7a7a\u6c23\u54c1\u8cea</div>'
-      + '<div class="aqi-level" style="color:' + color + '">' + label + '</div>'
-      + '<div class="aqi-detail">PM2.5 ' + pm25 + ' \u03bcg/m\u00b3</div>';
-    card.appendChild(block);
+
+    document.getElementById('aqi-circle').textContent = aqi;
+    document.getElementById('aqi-circle').style.borderColor = color;
+    document.getElementById('aqi-circle').style.color = color;
+    document.getElementById('aqi-level-text').textContent = label;
+    document.getElementById('aqi-level-text').style.color = color;
+    document.getElementById('aqi-pm25').textContent = 'PM2.5  ' + pm25 + ' \u03bcg/m\u00b3';
+    aqiCard.classList.add('show');
   }
 
   function waitForFP(callback) {
@@ -254,8 +321,10 @@
       })
       .catch(function(err) {
         clearTimeout(timeout);
+        loadingBlock.style.display = 'none';
+        errorBlock.style.display = 'block';
         var msg = err.name === 'AbortError' ? '\u8f09\u5165\u900e\u6642\uff0c\u8acb\u91cd\u65b0\u6574\u7406' : '\u7121\u6cd5\u8f09\u5165\u5929\u6c23\u8cc7\u6599';
-        card.innerHTML = '<div class="weather-error">' + msg + '</div>';
+        errorBlock.innerHTML = '<div class="weather-error">' + msg + '</div>';
       });
   }
 
@@ -283,7 +352,9 @@
       if (aqiData && aqiData.list && aqiData.list[0]) renderAQI(aqiData.list[0]);
       registerDevice();
     }).catch(function() {
-      card.innerHTML = '<div class="weather-error">\u7121\u6cd5\u8f09\u5165\u5929\u6c23\u8cc7\u6599</div>';
+      loadingBlock.style.display = 'none';
+      errorBlock.style.display = 'block';
+      errorBlock.innerHTML = '<div class="weather-error">\u7121\u6cd5\u8f09\u5165\u5929\u6c23\u8cc7\u6599</div>';
     });
   }
 

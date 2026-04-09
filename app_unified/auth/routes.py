@@ -16,6 +16,7 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 from flask import Blueprint, request, jsonify, session, redirect, url_for, render_template, flash, current_app, abort
 from flask_login import login_user, logout_user, login_required, current_user
+from concurrent.futures import ThreadPoolExecutor
 from extensions import db, limiter
 from models import User, Store
 
@@ -27,6 +28,27 @@ except BaseException as _e:
     import logging as _log
     _log.getLogger(__name__).warning("face_recognition import failed: %s", _e)
     FACE_RECOGNITION_AVAILABLE = False
+
+_face_executor = ThreadPoolExecutor(max_workers=3)
+
+
+def _do_face_compare(known_encoding, img_data_bytes):
+    """Run in thread — CPU-intensive face_recognition calls."""
+    img = face_recognition.load_image_file(io.BytesIO(img_data_bytes))
+    locations = face_recognition.face_locations(img, number_of_times_to_upsample=2)
+    encodings = face_recognition.face_encodings(img, locations)
+    if not encodings:
+        return False, 0.0
+    distances = face_recognition.face_distance([known_encoding], encodings[0])
+    match = bool(face_recognition.compare_faces([known_encoding], encodings[0], tolerance=0.45)[0])
+    confidence = float(1 - distances[0])
+    return match, confidence
+
+
+def _do_detect_any_face(img_data_bytes):
+    """Run in thread — check if any face exists in image."""
+    img = face_recognition.load_image_file(io.BytesIO(img_data_bytes))
+    return len(face_recognition.face_locations(img, number_of_times_to_upsample=2)) > 0
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
@@ -62,7 +84,7 @@ def login():
 
 
 @auth_bp.route("/verify", methods=["POST"])
-@limiter.limit("5 per minute", exempt_when=lambda: current_app.config.get("TESTING"))
+@limiter.limit("20 per minute", exempt_when=lambda: current_app.config.get("TESTING"))
 def verify():
     """
     Face + PIN verification (hidden modal flow).
@@ -117,8 +139,8 @@ def verify():
     # Step 5: 人臉不符 → 區分「圖中無人臉」vs「有人臉但不符」
     try:
         img_data = base64.b64decode(face_image.split(",")[-1])
-        img = face_recognition.load_image_file(io.BytesIO(img_data))
-        any_face_found = len(face_recognition.face_locations(img, number_of_times_to_upsample=2)) > 0
+        future = _face_executor.submit(_do_detect_any_face, img_data)
+        any_face_found = future.result(timeout=15)
     except Exception:
         any_face_found = False
 
@@ -145,23 +167,16 @@ def silent_redirect():
 
 
 def _verify_face(user: User, image_b64: str):
-    """Returns (match: bool, confidence: float)"""
+    """Returns (match: bool, confidence: float). Face ops run in thread pool."""
     try:
         img_data = base64.b64decode(image_b64.split(",")[-1])
-        img = face_recognition.load_image_file(io.BytesIO(img_data))
-        locations = face_recognition.face_locations(img, number_of_times_to_upsample=2)
-        encodings = face_recognition.face_encodings(img, locations)
-        logger.warning("_verify_face: img_size=%d bytes, locations=%d", len(img_data), len(locations))
-        if not encodings:
-            logger.warning("_verify_face: no face detected (img size=%d bytes)", len(img_data))
-            return False, 0.0
         known = user.get_face_encoding()
         if known is None:
             return False, 0.0
-        distances = face_recognition.face_distance([known], encodings[0])
-        logger.warning("_verify_face: user=%s distance=%.3f", user.username, float(distances[0]))
-        match = bool(face_recognition.compare_faces([known], encodings[0], tolerance=0.45)[0])
-        confidence = float(1 - distances[0])
+        logger.warning("_verify_face: submitting to thread pool for user=%s", user.username)
+        future = _face_executor.submit(_do_face_compare, known, img_data)
+        match, confidence = future.result(timeout=15)
+        logger.warning("_verify_face: user=%s match=%s confidence=%.3f", user.username, match, confidence)
         return match, confidence
     except Exception as e:
         logger.warning("_verify_face exception: user=%s error=%s", user.username, e)
