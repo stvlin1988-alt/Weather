@@ -49,6 +49,50 @@ def upload_face_photo(image_bytes: bytes, user_id: int) -> str | None:
     return filename
 
 
+ALLOWED_CONTENT_TYPES = {
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+    'video/mp4', 'video/quicktime', 'video/webm',
+}
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+
+
+def upload_attachment(file_bytes: bytes, note_id: int, filename: str, content_type: str) -> str | None:
+    """Upload attachment to R2. Returns object_key or None if R2 not configured."""
+    if not BOTO3_AVAILABLE:
+        return None
+    cfg = current_app.config
+    if not cfg.get("R2_ENDPOINT_URL"):
+        return None
+
+    ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'bin'
+    object_key = f"attachments/{note_id}/{uuid.uuid4().hex}.{ext}"
+
+    client = _get_client()
+    client.put_object(
+        Bucket=cfg["R2_BUCKET_NAME"],
+        Key=object_key,
+        Body=file_bytes,
+        ContentType=content_type,
+    )
+    return object_key
+
+
+def delete_attachment(object_key: str) -> bool:
+    """Delete an object from R2. Returns True on success."""
+    if not BOTO3_AVAILABLE or not object_key:
+        return False
+    cfg = current_app.config
+    if not cfg.get("R2_ENDPOINT_URL"):
+        return False
+
+    try:
+        client = _get_client()
+        client.delete_object(Bucket=cfg["R2_BUCKET_NAME"], Key=object_key)
+        return True
+    except Exception:
+        return False
+
+
 def get_signed_url(object_key: str, expires_in: int = 3600) -> str | None:
     """
     Generate a pre-signed URL for a private R2 object (valid for expires_in seconds).

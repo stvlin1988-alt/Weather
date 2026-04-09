@@ -256,12 +256,17 @@ def update_note(note_id):
 @notes_bp.route("/api/<int:note_id>", methods=["DELETE"])
 @login_required
 def delete_note(note_id):
+    from storage import delete_attachment as r2_delete
     if current_user.is_super_admin():
         note = Note.query.get_or_404(note_id)
     elif current_user.is_admin():
         note = Note.query.filter_by(id=note_id, store=current_user.store).first_or_404()
     else:
         note = Note.query.filter_by(id=note_id, store=current_user.store).first_or_404()
+
+    for att in note.attachments:
+        r2_delete(att.object_key)
+
     log = NoteLog(
         note_id=note.id,
         note_title=note.title,
@@ -441,6 +446,133 @@ def notes_ai_summary():
     gevent.spawn(_run_ai_task, task_id, current_app._get_current_object(),
                  prompt, 8192)
     return jsonify({"status": "accepted", "task_id": task_id})
+
+
+@notes_bp.route("/api/attachments/upload", methods=["POST"])
+@login_required
+def upload_attachment_api():
+    from models import NoteAttachment
+    from storage import upload_attachment, get_signed_url, ALLOWED_CONTENT_TYPES, MAX_FILE_SIZE
+
+    note_id = request.form.get("note_id", type=int)
+    if not note_id:
+        return jsonify({"status": "error", "message": "缺少 note_id"}), 400
+
+    if current_user.is_super_admin():
+        note = Note.query.get(note_id)
+    elif current_user.is_admin():
+        note = Note.query.filter_by(id=note_id, store=current_user.store).first()
+    else:
+        note = Note.query.filter_by(id=note_id, user_id=current_user.id, store=current_user.store).first()
+    if not note:
+        return jsonify({"status": "error", "message": "筆記不存在或無權限"}), 404
+
+    file = request.files.get("file")
+    if not file or not file.filename:
+        return jsonify({"status": "error", "message": "未選擇檔案"}), 400
+
+    content_type = file.content_type or ''
+    if content_type not in ALLOWED_CONTENT_TYPES:
+        return jsonify({"status": "error", "message": "不支援的檔案格式"}), 400
+
+    file_bytes = file.read()
+    if len(file_bytes) > MAX_FILE_SIZE:
+        return jsonify({"status": "error", "message": "檔案超過 50MB 上限"}), 400
+
+    object_key = upload_attachment(file_bytes, note_id, file.filename, content_type)
+    if not object_key:
+        return jsonify({"status": "error", "message": "儲存服務未設定"}), 503
+
+    attachment = NoteAttachment(
+        note_id=note_id,
+        user_id=current_user.id,
+        object_key=object_key,
+        filename=file.filename,
+        content_type=content_type,
+        file_size=len(file_bytes),
+    )
+    db.session.add(attachment)
+    db.session.commit()
+
+    url = get_signed_url(object_key)
+    return jsonify({
+        "status": "ok",
+        "attachment": {
+            "id": attachment.id,
+            "filename": attachment.filename,
+            "content_type": attachment.content_type,
+            "file_size": attachment.file_size,
+            "url": url,
+        }
+    }), 201
+
+
+@notes_bp.route("/api/attachments", methods=["GET"])
+@login_required
+def list_attachments():
+    from models import NoteAttachment
+    from storage import get_signed_url
+
+    note_id = request.args.get("note_id", type=int)
+    if not note_id:
+        return jsonify({"status": "error", "message": "缺少 note_id"}), 400
+
+    if current_user.is_super_admin():
+        note = Note.query.get(note_id)
+    elif current_user.is_admin():
+        note = Note.query.filter_by(id=note_id, store=current_user.store).first()
+    else:
+        note = Note.query.filter_by(id=note_id, store=current_user.store).first()
+    if not note:
+        return jsonify({"status": "error", "message": "筆記不存在或無權限"}), 404
+
+    attachments = NoteAttachment.query.filter_by(note_id=note_id).order_by(NoteAttachment.created_at).all()
+    result = []
+    for a in attachments:
+        url = get_signed_url(a.object_key)
+        result.append({
+            "id": a.id,
+            "filename": a.filename,
+            "content_type": a.content_type,
+            "file_size": a.file_size,
+            "url": url,
+            "uploader": a.uploader.username if a.uploader else "",
+            "created_at": a.created_at.isoformat() if a.created_at else "",
+        })
+    return jsonify({"status": "ok", "attachments": result})
+
+
+@notes_bp.route("/api/attachments/<int:attachment_id>", methods=["DELETE"])
+@login_required
+def delete_attachment_api(attachment_id):
+    from models import NoteAttachment
+    from storage import delete_attachment
+
+    attachment = NoteAttachment.query.get(attachment_id)
+    if not attachment:
+        return jsonify({"status": "error", "message": "附件不存在"}), 404
+
+    note = Note.query.get(attachment.note_id)
+    if not note:
+        return jsonify({"status": "error", "message": "筆記不存在"}), 404
+
+    can_delete = False
+    if current_user.is_super_admin():
+        can_delete = True
+    elif current_user.is_admin() and note.store == current_user.store:
+        can_delete = True
+    elif attachment.user_id == current_user.id:
+        can_delete = True
+    elif note.user_id == current_user.id:
+        can_delete = True
+
+    if not can_delete:
+        return jsonify({"status": "error", "message": "無權限刪除"}), 403
+
+    delete_attachment(attachment.object_key)
+    db.session.delete(attachment)
+    db.session.commit()
+    return jsonify({"status": "ok"})
 
 
 @notes_bp.route("/<int:note_id>")

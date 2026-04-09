@@ -41,6 +41,21 @@
 .updated-by-info { font-size: .85rem; color: #888; margin-bottom: .5rem; }
 .store-display { font-size: .85rem; color: #666; margin-bottom: .75rem; }
 .store-display .store-badge-inline { display:inline-block; padding:.1rem .5rem; border-radius:10px; font-size:.82rem; font-weight:700; color:#fff; margin-left:.3rem; }
+.attachment-section { margin-top: 1rem; }
+.attachment-section h4 { font-size: .9rem; color: #666; margin-bottom: .5rem; }
+.upload-bar { display: flex; gap: .5rem; align-items: center; margin-bottom: .75rem; flex-wrap: wrap; }
+.upload-bar input[type="file"] { display: none; }
+.upload-progress { width: 100%; height: 4px; background: #eee; border-radius: 2px; overflow: hidden; display: none; margin-bottom: .5rem; }
+.upload-progress-bar { height: 100%; background: #3498db; width: 0%; transition: width .3s; }
+.attachment-list { display: flex; flex-wrap: wrap; gap: .75rem; }
+.att-item { position: relative; border-radius: 8px; overflow: hidden; border: 1px solid #eee; background: #fafafa; }
+.att-item img { display: block; max-width: 200px; max-height: 150px; object-fit: cover; cursor: pointer; }
+.att-item video { display: block; max-width: 280px; max-height: 200px; border-radius: 8px; }
+.att-item .att-info { padding: .3rem .5rem; font-size: .75rem; color: #888; }
+.att-item .att-delete { position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,.6); color: #fff; border: none; border-radius: 50%; width: 24px; height: 24px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.fullscreen-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.9); z-index: 9999; align-items: center; justify-content: center; cursor: pointer; }
+.fullscreen-overlay.open { display: flex; }
+.fullscreen-overlay img { max-width: 95vw; max-height: 95vh; object-fit: contain; touch-action: pinch-zoom; }
 </style>
 {% endblock %}
 {% block content %}
@@ -98,6 +113,22 @@
   </div>
   <textarea id="content-area" placeholder="開始輸入筆記內容…">{{ note.content if note else '' }}</textarea>
 
+  <!-- 附件區 -->
+  <div class="attachment-section" id="attachment-section" {% if not note %}style="display:none"{% endif %}>
+    <h4>附件</h4>
+    <div class="upload-bar">
+      <button class="btn btn-secondary" type="button" onclick="document.getElementById('file-input').click()">📎 上傳圖片/影片</button>
+      <input type="file" id="file-input" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm" multiple onchange="handleFileUpload(this)">
+      <span id="upload-status" style="font-size:.85rem;color:#888;"></span>
+    </div>
+    <div class="upload-progress" id="upload-progress"><div class="upload-progress-bar" id="upload-progress-bar"></div></div>
+    <div class="attachment-list" id="attachment-list"></div>
+  </div>
+
+  <!-- 全螢幕預覽 -->
+  <div class="fullscreen-overlay" id="fullscreen-overlay" onclick="closeFullscreen()">
+    <img id="fullscreen-img" src="">
+  </div>
 </div>
 {% endblock %}
 {% block scripts %}
@@ -157,7 +188,15 @@ function doSave() {
     window._ws.emit('d', payload);
     window._ws.once('r', function(data) {
       if ((data.op === op || data.op === 'cn') && (data.status === 'ok' || data.id)) {
-        window.location.href = '/notes/';
+        if (!NOTE_ID && data.id) {
+          NOTE_ID = data.id;
+          document.getElementById('attachment-section').style.display = '';
+          statusEl.textContent = '已儲存，可上傳附件';
+          saveBtn.disabled = false;
+          history.replaceState(null, '', '/notes/' + NOTE_ID);
+        } else {
+          window.location.href = '/notes/';
+        }
       } else {
         statusEl.textContent = '儲存失敗：' + (data.message || '未知錯誤');
         saveBtn.disabled = false;
@@ -171,7 +210,17 @@ function doSave() {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ title: title, content: content, store: store, status: currentStatus, priority: currentPriority })
     }).then(function(res) { return res.json(); }).then(function(data) {
-      if (data.status === 'ok' || data.id) { window.location.href = '/notes/'; }
+      if (data.status === 'ok' || data.id) {
+        if (!NOTE_ID && data.id) {
+          NOTE_ID = data.id;
+          document.getElementById('attachment-section').style.display = '';
+          statusEl.textContent = '已儲存，可上傳附件';
+          saveBtn.disabled = false;
+          history.replaceState(null, '', '/notes/' + NOTE_ID);
+        } else {
+          window.location.href = '/notes/';
+        }
+      }
       else { statusEl.textContent = '儲存失敗：' + (data.message || '未知錯誤'); saveBtn.disabled = false; }
     }).catch(function(err) { statusEl.textContent = '儲存失敗：' + err.message; saveBtn.disabled = false; });
   }
@@ -186,6 +235,134 @@ function doDelete() {
     fetch('/notes/api/' + NOTE_ID, { method: 'DELETE' }).then(function() { window.location.href = '/notes/'; });
   }
 }
+
+// ── 附件功能 ──
+function loadAttachments() {
+  if (!NOTE_ID) return;
+  fetch('/notes/api/attachments?note_id=' + NOTE_ID)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.status !== 'ok') return;
+      var list = document.getElementById('attachment-list');
+      list.innerHTML = '';
+      data.attachments.forEach(function(att) {
+        list.appendChild(createAttItem(att));
+      });
+    }).catch(function() {});
+}
+
+function createAttItem(att) {
+  var div = document.createElement('div');
+  div.className = 'att-item';
+  div.id = 'att-' + att.id;
+
+  if (att.content_type.startsWith('image/')) {
+    var img = document.createElement('img');
+    img.src = att.url;
+    img.alt = att.filename;
+    img.onclick = function() { openFullscreen(att.url); };
+    div.appendChild(img);
+  } else if (att.content_type.startsWith('video/')) {
+    var video = document.createElement('video');
+    video.src = att.url;
+    video.controls = true;
+    video.preload = 'metadata';
+    video.playsInline = true;
+    div.appendChild(video);
+  }
+
+  var info = document.createElement('div');
+  info.className = 'att-info';
+  var sizeStr = att.file_size > 1048576 ? (att.file_size / 1048576).toFixed(1) + ' MB' : (att.file_size / 1024).toFixed(0) + ' KB';
+  info.textContent = att.filename + ' (' + sizeStr + ')';
+  div.appendChild(info);
+
+  var delBtn = document.createElement('button');
+  delBtn.className = 'att-delete';
+  delBtn.textContent = '\u00d7';
+  delBtn.onclick = function(e) {
+    e.stopPropagation();
+    if (!confirm('刪除此附件？')) return;
+    fetch('/notes/api/attachments/' + att.id, { method: 'DELETE' })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.status === 'ok') {
+          var el = document.getElementById('att-' + att.id);
+          if (el) el.remove();
+        }
+      });
+  };
+  div.appendChild(delBtn);
+
+  return div;
+}
+
+function handleFileUpload(input) {
+  if (!NOTE_ID) {
+    alert('請先儲存筆記後再上傳附件');
+    input.value = '';
+    return;
+  }
+  var files = input.files;
+  if (!files.length) return;
+
+  var statusEl = document.getElementById('upload-status');
+  var progressWrap = document.getElementById('upload-progress');
+  var progressBar = document.getElementById('upload-progress-bar');
+  var total = files.length;
+  var done = 0;
+
+  progressWrap.style.display = 'block';
+
+  for (var i = 0; i < files.length; i++) {
+    (function(file) {
+      var formData = new FormData();
+      formData.append('file', file);
+      formData.append('note_id', NOTE_ID);
+
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', '/notes/api/attachments/upload');
+
+      xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) {
+          var pct = Math.round((e.loaded / e.total) * 100);
+          progressBar.style.width = pct + '%';
+        }
+      };
+
+      xhr.onload = function() {
+        done++;
+        statusEl.textContent = done + '/' + total + ' 完成';
+        if (done >= total) {
+          progressWrap.style.display = 'none';
+          progressBar.style.width = '0%';
+          statusEl.textContent = '';
+          loadAttachments();
+          input.value = '';
+        }
+      };
+
+      xhr.onerror = function() {
+        done++;
+        statusEl.textContent = '上傳失敗：' + file.name;
+      };
+
+      xhr.send(formData);
+    })(files[i]);
+  }
+}
+
+function openFullscreen(url) {
+  document.getElementById('fullscreen-img').src = url;
+  document.getElementById('fullscreen-overlay').classList.add('open');
+}
+
+function closeFullscreen() {
+  document.getElementById('fullscreen-overlay').classList.remove('open');
+  document.getElementById('fullscreen-img').src = '';
+}
+
+if (NOTE_ID) loadAttachments();
 
 
 </script>

@@ -96,6 +96,22 @@ class NoteLog(db.Model):
     operator = db.relationship("User", foreign_keys=[user_id])
 
 
+class NoteAttachment(db.Model):
+    __tablename__ = "note_attachments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    note_id = db.Column(db.Integer, db.ForeignKey("notes.id", ondelete="CASCADE"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    object_key = db.Column(db.Text, nullable=False)
+    filename = db.Column(db.Text, nullable=False)
+    content_type = db.Column(db.Text, nullable=False)
+    file_size = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    note = db.relationship("Note", backref=db.backref("attachments", lazy=True, cascade="all, delete-orphan"))
+    uploader = db.relationship("User", foreign_keys=[user_id])
+
+
 class LoginToken(db.Model):
     __tablename__ = "login_tokens"
 

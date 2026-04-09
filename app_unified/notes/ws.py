@@ -140,6 +140,7 @@ def register_ws_events(socketio):
         emit('r', {'op': 'un', 'status': 'ok'})
 
     def _delete_note(data):
+        from storage import delete_attachment as r2_delete
         note_id = data.get('id')
         if current_user.is_super_admin():
             note = Note.query.get(note_id)
@@ -150,6 +151,10 @@ def register_ws_events(socketio):
         if not note:
             emit('r', {'op': 'er', 'message': 'not found'})
             return
+
+        for att in note.attachments:
+            r2_delete(att.object_key)
+
         log = NoteLog(note_id=note.id, note_title=note.title, user_id=current_user.id, action='delete')
         db.session.add(log)
         db.session.delete(note)
