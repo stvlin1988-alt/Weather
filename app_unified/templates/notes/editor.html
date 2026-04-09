@@ -114,7 +114,7 @@
   <textarea id="content-area" placeholder="開始輸入筆記內容…">{{ note.content if note else '' }}</textarea>
 
   <!-- 附件區 -->
-  <div class="attachment-section" id="attachment-section" {% if not note %}style="display:none"{% endif %}>
+  <div class="attachment-section" id="attachment-section">
     <h4>附件</h4>
     <div class="upload-bar">
       <button class="btn btn-secondary" type="button" onclick="document.getElementById('file-input').click()">📎 上傳圖片/影片</button>
@@ -172,6 +172,9 @@ function selectPriority(btn) {
   currentPriority = btn.getAttribute('data-priority');
 }
 
+// 暫存待上傳的檔案（新筆記用）
+var pendingFiles = [];
+
 function doSave() {
   var title = document.getElementById('title-input').value.trim() || '未命名筆記';
   var content = document.getElementById('content-area').value;
@@ -181,49 +184,47 @@ function doSave() {
   statusEl.textContent = '儲存中…';
   saveBtn.disabled = true;
 
-  if (window._ws && window._ws.connected) {
-    var op = NOTE_ID ? 'un' : 'cn';
-    var payload = { op: op, title: title, content: content, store: store, status: currentStatus, priority: currentPriority };
-    if (NOTE_ID) payload.id = NOTE_ID;
-    window._ws.emit('d', payload);
-    window._ws.once('r', function(data) {
-      if ((data.op === op || data.op === 'cn') && (data.status === 'ok' || data.id)) {
-        if (!NOTE_ID && data.id) {
-          NOTE_ID = data.id;
-          document.getElementById('attachment-section').style.display = '';
-          statusEl.textContent = '已儲存，可上傳附件';
-          saveBtn.disabled = false;
-          history.replaceState(null, '', '/notes/' + NOTE_ID);
-        } else {
+  var url = NOTE_ID ? ('/notes/api/' + NOTE_ID) : '/notes/api';
+  var method = NOTE_ID ? 'PUT' : 'POST';
+  fetch(url, {
+    method: method,
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ title: title, content: content, store: store, status: currentStatus, priority: currentPriority })
+  }).then(function(res) { return res.json(); }).then(function(data) {
+    if (data.status === 'ok' || data.id) {
+      if (!NOTE_ID && data.id) {
+        NOTE_ID = data.id;
+      }
+      // 如果有暫存的檔案，先全部上傳完才跳轉
+      if (pendingFiles.length > 0) {
+        statusEl.textContent = '上傳附件中…';
+        uploadPendingFiles().then(function() {
           window.location.href = '/notes/';
-        }
+        }).catch(function(err) {
+          statusEl.textContent = '附件上傳失敗：' + err.message;
+          saveBtn.disabled = false;
+        });
       } else {
-        statusEl.textContent = '儲存失敗：' + (data.message || '未知錯誤');
-        saveBtn.disabled = false;
+        window.location.href = '/notes/';
       }
-    });
-  } else {
-    var url = NOTE_ID ? ('/notes/api/' + NOTE_ID) : '/notes/api';
-    var method = NOTE_ID ? 'PUT' : 'POST';
-    fetch(url, {
-      method: method,
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ title: title, content: content, store: store, status: currentStatus, priority: currentPriority })
-    }).then(function(res) { return res.json(); }).then(function(data) {
-      if (data.status === 'ok' || data.id) {
-        if (!NOTE_ID && data.id) {
-          NOTE_ID = data.id;
-          document.getElementById('attachment-section').style.display = '';
-          statusEl.textContent = '已儲存，可上傳附件';
-          saveBtn.disabled = false;
-          history.replaceState(null, '', '/notes/' + NOTE_ID);
-        } else {
-          window.location.href = '/notes/';
-        }
-      }
-      else { statusEl.textContent = '儲存失敗：' + (data.message || '未知錯誤'); saveBtn.disabled = false; }
-    }).catch(function(err) { statusEl.textContent = '儲存失敗：' + err.message; saveBtn.disabled = false; });
-  }
+    }
+    else { statusEl.textContent = '儲存失敗：' + (data.message || '未知錯誤'); saveBtn.disabled = false; }
+  }).catch(function(err) { statusEl.textContent = '儲存失敗：' + err.message; saveBtn.disabled = false; });
+}
+
+function uploadPendingFiles() {
+  // 依序上傳所有暫存的檔案
+  var promises = pendingFiles.map(function(file) {
+    var formData = new FormData();
+    formData.append('file', file);
+    formData.append('note_id', NOTE_ID);
+    return fetch('/notes/api/attachments/upload', { method: 'POST', body: formData })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.status !== 'ok') throw new Error(d.message || '上傳失敗');
+      });
+  });
+  return Promise.all(promises);
 }
 
 function doDelete() {
@@ -298,20 +299,26 @@ function createAttItem(att) {
 }
 
 function handleFileUpload(input) {
+  var files = input.files;
+  if (!files.length) return;
+  var statusEl = document.getElementById('upload-status');
+
+  // 新筆記：暫存到記憶體 + 顯示本地預覽
   if (!NOTE_ID) {
-    alert('請先儲存筆記後再上傳附件');
+    for (var i = 0; i < files.length; i++) {
+      pendingFiles.push(files[i]);
+      addPendingPreview(files[i]);
+    }
+    statusEl.textContent = pendingFiles.length + ' 個檔案待儲存';
     input.value = '';
     return;
   }
-  var files = input.files;
-  if (!files.length) return;
 
-  var statusEl = document.getElementById('upload-status');
+  // 已儲存筆記：直接上傳
   var progressWrap = document.getElementById('upload-progress');
   var progressBar = document.getElementById('upload-progress-bar');
   var total = files.length;
   var done = 0;
-
   progressWrap.style.display = 'block';
 
   for (var i = 0; i < files.length; i++) {
@@ -322,14 +329,11 @@ function handleFileUpload(input) {
 
       var xhr = new XMLHttpRequest();
       xhr.open('POST', '/notes/api/attachments/upload');
-
       xhr.upload.onprogress = function(e) {
         if (e.lengthComputable) {
-          var pct = Math.round((e.loaded / e.total) * 100);
-          progressBar.style.width = pct + '%';
+          progressBar.style.width = Math.round((e.loaded / e.total) * 100) + '%';
         }
       };
-
       xhr.onload = function() {
         done++;
         statusEl.textContent = done + '/' + total + ' 完成';
@@ -341,15 +345,60 @@ function handleFileUpload(input) {
           input.value = '';
         }
       };
-
       xhr.onerror = function() {
         done++;
         statusEl.textContent = '上傳失敗：' + file.name;
       };
-
       xhr.send(formData);
     })(files[i]);
   }
+}
+
+function addPendingPreview(file) {
+  // 新筆記用：本地預覽待上傳的檔案
+  var list = document.getElementById('attachment-list');
+  var div = document.createElement('div');
+  div.className = 'att-item';
+  var pendingId = 'pending-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+  div.id = pendingId;
+
+  var url = URL.createObjectURL(file);
+  if (file.type.startsWith('image/')) {
+    var img = document.createElement('img');
+    img.src = url;
+    img.onclick = function() { openFullscreen(url); };
+    div.appendChild(img);
+  } else if (file.type.startsWith('video/')) {
+    var video = document.createElement('video');
+    video.src = url;
+    video.controls = true;
+    video.preload = 'metadata';
+    video.playsInline = true;
+    div.appendChild(video);
+  }
+
+  var info = document.createElement('div');
+  info.className = 'att-info';
+  var sizeStr = file.size > 1048576 ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size / 1024).toFixed(0) + ' KB';
+  info.textContent = file.name + ' (' + sizeStr + ') · 待儲存';
+  div.appendChild(info);
+
+  var delBtn = document.createElement('button');
+  delBtn.className = 'att-delete';
+  delBtn.textContent = '\u00d7';
+  delBtn.onclick = function(e) {
+    e.stopPropagation();
+    // 從 pendingFiles 移除
+    var idx = pendingFiles.indexOf(file);
+    if (idx >= 0) pendingFiles.splice(idx, 1);
+    URL.revokeObjectURL(url);
+    div.remove();
+    var statusEl = document.getElementById('upload-status');
+    statusEl.textContent = pendingFiles.length > 0 ? (pendingFiles.length + ' 個檔案待儲存') : '';
+  };
+  div.appendChild(delBtn);
+
+  list.appendChild(div);
 }
 
 function openFullscreen(url) {
