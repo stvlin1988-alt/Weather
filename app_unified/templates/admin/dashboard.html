@@ -18,7 +18,7 @@ th { background: #f8f9fa; font-weight: 700; }
 @media (max-width: 600px) {
   th, td { padding: .4rem .5rem; font-size: .82rem; }
 }
-.card > table, .card > div > table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .ai-summary-output { background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 1rem; margin-top: .75rem; white-space: pre-wrap; font-size: .9rem; line-height: 1.6; max-height: 400px; overflow-y: auto; }
 .store-chip { display:inline-block; padding:.2rem .55rem; border-radius:12px; font-size:.8rem; font-weight:700; color:#fff; cursor:default; }
 #enroll-preview { display:none; flex-direction:column; align-items:center; gap:.5rem; margin-top:.5rem; }
@@ -270,6 +270,7 @@ th { background: #f8f9fa; font-weight: 700; }
     <thead><tr><th>時間</th><th>操作員</th><th>動作</th><th>筆記</th><th>變更</th></tr></thead>
     <tbody id="logs-tbody"></tbody>
   </table>
+  <div id="logs-pagination" style="display:none;justify-content:center;align-items:center;gap:.4rem;margin-top:.75rem;flex-wrap:wrap;"></div>
 </div>
 
 <div class="card" style="margin-top:1rem;">
@@ -279,6 +280,7 @@ th { background: #f8f9fa; font-weight: 700; }
     <thead><tr><th>時間</th><th>操作員</th><th>動作</th><th>目標帳號</th><th>變更</th></tr></thead>
     <tbody id="user-logs-tbody"></tbody>
   </table>
+  <div id="user-logs-pagination" style="display:none;justify-content:center;align-items:center;gap:.4rem;margin-top:.75rem;flex-wrap:wrap;"></div>
 </div>
 {% endblock %}
 {% block scripts %}
@@ -382,36 +384,96 @@ async function deleteStore(name) {
 }
 
 // Log
+var _logsData = [];
+var _userLogsData = [];
+var LOGS_PER_PAGE = 20;
+
+function renderLogsPage(page) {
+  var start = (page - 1) * LOGS_PER_PAGE;
+  var pageLogs = _logsData.slice(start, start + LOGS_PER_PAGE);
+  var tbody = document.getElementById('logs-tbody');
+  tbody.innerHTML = pageLogs.map(function(l) {
+    return '<tr>'
+      + '<td style="white-space:nowrap;font-size:.8rem;">' + l.created_at + '</td>'
+      + '<td>' + l.operator + '</td>'
+      + '<td><span class="status-badge status-' + (l.action === 'delete' ? 'resolved' : 'in_progress') + '">' + (l.action === 'delete' ? '刪除' : '編輯') + '</span></td>'
+      + '<td>' + l.note_title + '</td>'
+      + '<td style="font-size:.8rem;color:#666;">' + (l.diff || '—') + '</td>'
+      + '</tr>';
+  }).join('');
+  var totalPages = Math.max(1, Math.ceil(_logsData.length / LOGS_PER_PAGE));
+  var c = document.getElementById('logs-pagination');
+  if (totalPages <= 1) { c.style.display = 'none'; c.innerHTML = ''; return; }
+  c.style.display = 'flex';
+  var html = '';
+  function btn(label, pg, active, disabled) {
+    var s = 'padding:.4rem .8rem;border-radius:6px;font-size:.9rem;';
+    if (active) s += 'background:#2c3e50;color:#fff;font-weight:600;';
+    else if (disabled) s += 'background:#f0f0f0;color:#ccc;cursor:not-allowed;';
+    else s += 'background:#f0f0f0;color:#333;cursor:pointer;';
+    return disabled || active
+      ? '<span style="' + s + '">' + label + '</span>'
+      : '<a onclick="renderLogsPage(' + pg + ')" style="' + s + '">' + label + '</a>';
+  }
+  html += btn('‹', page - 1, false, page === 1);
+  for (var p = 1; p <= totalPages; p++) {
+    if (p === 1 || p === totalPages || Math.abs(p - page) <= 1) html += btn(p, p, p === page, false);
+    else if (p === page - 2 || p === page + 2) html += '<span style="color:#999;padding:.4rem .2rem;">…</span>';
+  }
+  html += btn('›', page + 1, false, page === totalPages);
+  html += '<span style="font-size:.8rem;color:#999;margin-left:.5rem;">共 ' + _logsData.length + ' 筆</span>';
+  c.innerHTML = html;
+}
+
+function renderUserLogsPage(page) {
+  var start = (page - 1) * LOGS_PER_PAGE;
+  var pageLogs = _userLogsData.slice(start, start + LOGS_PER_PAGE);
+  var tbody = document.getElementById('user-logs-tbody');
+  tbody.innerHTML = pageLogs.map(function(l) {
+    return '<tr>'
+      + '<td style="white-space:nowrap;font-size:.8rem;">' + l.created_at + '</td>'
+      + '<td>' + l.operator + '</td>'
+      + '<td>' + l.action + '</td>'
+      + '<td>' + l.target + '</td>'
+      + '<td style="font-size:.8rem;color:#666;">' + (l.detail || '—') + '</td>'
+      + '</tr>';
+  }).join('');
+  var totalPages = Math.max(1, Math.ceil(_userLogsData.length / LOGS_PER_PAGE));
+  var c = document.getElementById('user-logs-pagination');
+  if (totalPages <= 1) { c.style.display = 'none'; c.innerHTML = ''; return; }
+  c.style.display = 'flex';
+  var html = '';
+  function btn(label, pg, active, disabled) {
+    var s = 'padding:.4rem .8rem;border-radius:6px;font-size:.9rem;';
+    if (active) s += 'background:#2c3e50;color:#fff;font-weight:600;';
+    else if (disabled) s += 'background:#f0f0f0;color:#ccc;cursor:not-allowed;';
+    else s += 'background:#f0f0f0;color:#333;cursor:pointer;';
+    return disabled || active
+      ? '<span style="' + s + '">' + label + '</span>'
+      : '<a onclick="renderUserLogsPage(' + pg + ')" style="' + s + '">' + label + '</a>';
+  }
+  html += btn('‹', page - 1, false, page === 1);
+  for (var p = 1; p <= totalPages; p++) {
+    if (p === 1 || p === totalPages || Math.abs(p - page) <= 1) html += btn(p, p, p === page, false);
+    else if (p === page - 2 || p === page + 2) html += '<span style="color:#999;padding:.4rem .2rem;">…</span>';
+  }
+  html += btn('›', page + 1, false, page === totalPages);
+  html += '<span style="font-size:.8rem;color:#999;margin-left:.5rem;">共 ' + _userLogsData.length + ' 筆</span>';
+  c.innerHTML = html;
+}
+
 async function loadLogs() {
   const res = await fetch('/admin/logs');
-  const logs = await res.json();
-  const tbody = document.getElementById('logs-tbody');
+  _logsData = await res.json();
   document.getElementById('logs-table').style.display = 'table';
-  tbody.innerHTML = logs.map(l => `
-    <tr>
-      <td style="white-space:nowrap;font-size:.8rem;">${l.created_at}</td>
-      <td>${l.operator}</td>
-      <td><span class="status-badge status-${l.action === 'delete' ? 'resolved' : 'in_progress'}">${l.action === 'delete' ? '刪除' : '編輯'}</span></td>
-      <td>${l.note_title}</td>
-      <td style="font-size:.8rem;color:#666;">${l.diff || '—'}</td>
-    </tr>
-  `).join('');
+  renderLogsPage(1);
 }
 
 async function loadUserLogs() {
   const res = await fetch('/admin/user-logs');
-  const logs = await res.json();
-  const tbody = document.getElementById('user-logs-tbody');
+  _userLogsData = await res.json();
   document.getElementById('user-logs-table').style.display = 'table';
-  tbody.innerHTML = logs.map(l => `
-    <tr>
-      <td style="white-space:nowrap;font-size:.8rem;">${l.created_at}</td>
-      <td>${l.operator}</td>
-      <td>${l.action}</td>
-      <td>${l.target}</td>
-      <td style="font-size:.8rem;color:#666;">${l.detail || '—'}</td>
-    </tr>
-  `).join('');
+  renderUserLogsPage(1);
 }
 
 function filterUsersByStore(store) {
