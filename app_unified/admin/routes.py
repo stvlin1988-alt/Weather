@@ -1,6 +1,7 @@
 import io
 import base64
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+TW_TZ = timezone(timedelta(hours=8))
 from flask import Blueprint, render_template, jsonify, request, abort, current_app
 from flask_login import login_required, current_user
 from extensions import db
@@ -67,17 +68,21 @@ def require_admin():
 @login_required
 def dashboard():
     require_admin()
+    user_page = request.args.get("user_page", 1, type=int)
+    per_page = 20
     if current_user.is_super_admin():
-        users = User.query.order_by(User.created_at.desc()).all()
+        user_query = User.query.order_by(User.created_at.desc())
     else:
-        users = User.query.filter_by(store=current_user.store).order_by(User.created_at.desc()).all()
+        user_query = User.query.filter_by(store=current_user.store).order_by(User.created_at.desc())
+    user_pagination = user_query.paginate(page=user_page, per_page=per_page, error_out=False)
     if current_user.is_super_admin():
         notes = Note.query.order_by(Note.updated_at.desc()).limit(20).all()
     else:
         notes = Note.query.filter_by(store=current_user.store).order_by(Note.updated_at.desc()).limit(20).all()
     stores = [s.name for s in Store.query.order_by(Store.name).all()]
-    return render_template("admin/dashboard.html", users=users, notes=notes,
-                           stores=stores, status_choices=STATUS_CHOICES)
+    return render_template("admin/dashboard.html", users=user_pagination.items,
+                           user_pagination=user_pagination,
+                           notes=notes, stores=stores, status_choices=STATUS_CHOICES)
 
 
 @admin_bp.route("/users/create", methods=["POST"])
@@ -267,8 +272,8 @@ def list_devices():
         "username": d.user.username if d.user else None,
         "store": d.user.store if d.user else None,
         "role": d.user.role if d.user else None,
-        "created_at": d.created_at.strftime("%Y/%m/%d %H:%M") if d.created_at else "",
-        "last_seen_at": d.last_seen_at.strftime("%Y/%m/%d %H:%M") if d.last_seen_at else "",
+        "created_at": (d.created_at.replace(tzinfo=timezone.utc).astimezone(TW_TZ).strftime("%Y/%m/%d %H:%M")) if d.created_at else "",
+        "last_seen_at": (d.last_seen_at.replace(tzinfo=timezone.utc).astimezone(TW_TZ).strftime("%Y/%m/%d %H:%M")) if d.last_seen_at else "",
     } for d in devices])
 
 
@@ -289,6 +294,9 @@ def approve_device(device_id):
 
     if not username or not pin:
         return jsonify({"status": "error", "message": "請填寫帳號和 PIN"}), 400
+
+    if not face_image:
+        return jsonify({"status": "error", "message": "請先拍攝人臉"}), 400
 
     if role in ("admin", "user"):
         valid_stores = [s.name for s in Store.query.all()]

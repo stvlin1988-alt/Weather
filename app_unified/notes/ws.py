@@ -60,8 +60,10 @@ def register_ws_events(socketio):
             query = query.filter(db.or_(Note.title.ilike(like), Note.content.ilike(like)))
         elif priority_filter and priority_filter in PRIORITY_CHOICES:
             query = query.filter_by(priority=priority_filter)
-        elif status_filter and status_filter in STATUS_CHOICES:
-            query = query.filter_by(status=status_filter)
+        elif 'status' in data and data.get('status') is not None:
+            if status_filter in STATUS_CHOICES:
+                query = query.filter_by(status=status_filter)
+            # status='' (全部狀態) → 不加 filter
         else:
             from notes.routes import _get_business_day_range
             range_days = {'today': 0, '3d': 3, '5d': 5, '7d': 7}

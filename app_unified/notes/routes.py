@@ -61,6 +61,8 @@ def index():
     range_param = request.args.get("range", "")
     priority_filter = request.args.get("priority", "")
     keyword = request.args.get("q", "").strip()
+    page = request.args.get("page", 1, type=int)
+    per_page = 20
     stores = _get_stores()
 
     query = Note.query
@@ -83,18 +85,21 @@ def index():
     elif priority_filter and priority_filter in PRIORITY_CHOICES:
         active_filter = 'priority'
         query = query.filter_by(priority=priority_filter)
-    elif status_filter and status_filter in STATUS_CHOICES:
+    elif status_filter is not None and 'status' in request.args:
         active_filter = 'status'
-        query = query.filter_by(status=status_filter)
+        if status_filter in STATUS_CHOICES:
+            query = query.filter_by(status=status_filter)
+        # status='' (全部狀態) → 不加 filter，顯示全部
     else:
         active_filter = 'range'
         if not range_param:
             range_param = 'today'
         query = _date_filter(query, range_param)
 
-    notes = query.order_by(Note.updated_at.desc()).all()
+    pagination = query.order_by(Note.updated_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
 
-    return render_template("notes/index.html", notes=notes, stores=stores,
+    return render_template("notes/index.html", notes=pagination.items, pagination=pagination,
+                           stores=stores,
                            current_store=store_filter,
                            current_status=status_filter,
                            current_range=range_param,
@@ -109,7 +114,7 @@ def index():
 @login_required
 def new_note():
     stores = _get_stores()
-    today = datetime.utcnow().strftime("%-m/%-d")
+    today = datetime.now(_TW).strftime("%-m/%-d")
     default_title = f"{today} {current_user.username}筆記"
     return render_template("notes/editor.html", note=None, stores=stores,
                            status_choices=STATUS_CHOICES, priority_choices=PRIORITY_CHOICES,
@@ -140,8 +145,10 @@ def list_notes():
         query = query.filter(db.or_(Note.title.ilike(like), Note.content.ilike(like)))
     elif priority_filter and priority_filter in PRIORITY_CHOICES:
         query = query.filter_by(priority=priority_filter)
-    elif status_filter and status_filter in STATUS_CHOICES:
-        query = query.filter_by(status=status_filter)
+    elif 'status' in request.args:
+        if status_filter in STATUS_CHOICES:
+            query = query.filter_by(status=status_filter)
+        # status='' (全部狀態) → 不加 filter
     else:
         if not range_param:
             range_param = 'today'
