@@ -57,8 +57,10 @@
 
 <div class="toolbar">
   <h2>我的筆記</h2>
-  <a href="{{ url_for('notes.new_note') }}" class="btn btn-primary" style="margin-left:auto;">+ 新增筆記</a>
-  <a href="{{ url_for('notes.new_note', type='checklist') }}" class="btn btn-primary" style="background:#27ae60;">☑ 新增確認表單</a>
+  <div style="display:flex;gap:.5rem;margin-left:auto;flex-wrap:wrap;justify-content:flex-end;">
+    <a href="{{ url_for('notes.new_note') }}" class="btn btn-primary">+ 新增筆記</a>
+    <a href="{{ url_for('notes.new_note', type='checklist') }}" class="btn btn-primary" style="background:#27ae60;">☑ 新增確認表單</a>
+  </div>
 </div>
 
 {% if current_user.is_admin() %}
