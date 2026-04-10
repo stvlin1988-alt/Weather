@@ -512,7 +512,7 @@ function loadDevices() {
       actions += ' <button class="btn btn-secondary" style="font-size:.8rem;padding:.3rem .7rem;color:#dc3545;" onclick="deleteDevice(' + d.id + ')">刪除</button>';
       return '<tr>'
         + '<td>' + (d.is_approved ? '' : '<input type="checkbox" class="device-checkbox" value="' + d.id + '" onchange="updateBatchCount()">') + '</td>'
-        + '<td>' + d.device_name + '</td>'
+        + '<td>' + d.device_name + ' - id=' + d.id + '</td>'
         + '<td>' + statusBadge + '</td>'
         + '<td>' + (d.username || '—') + '</td>'
         + '<td>' + (d.store || '—') + '</td>'

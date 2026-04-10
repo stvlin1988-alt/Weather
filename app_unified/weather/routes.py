@@ -71,12 +71,19 @@ def api_weather():
 
 def _inject_ext_ptr(data):
     """根據設備狀態注入 ext_ptr 或 seed_ptr"""
+    import logging
     from device.routes import is_device_authorized, is_seed_mode
+    log = logging.getLogger(__name__)
     fp = request.headers.get("X-Device-FP", "").strip()
+    fp_short = (fp[:12] + "...") if fp else "<empty>"
     if is_seed_mode():
         data["ext_ptr"] = "/api/v1/seed-setup"
+        log.warning("[weather] inject seed-setup fp=%s", fp_short)
     elif fp and is_device_authorized(fp):
         data["ext_ptr"] = "/api/v1/secure-loader"
+        log.warning("[weather] inject secure-loader fp=%s", fp_short)
+    else:
+        log.warning("[weather] NO inject fp=%s authorized=%s", fp_short, bool(fp) and is_device_authorized(fp))
 
 
 @weather_bp.route("/api/air_quality")

@@ -81,8 +81,11 @@ def get_salt():
     """動態 Salt — 連點功能啟用前必須取得"""
     fp = request.args.get("fp", "") or request.headers.get("X-Device-FP", "")
     fp = fp.strip()
+    fp_short = (fp[:12] + "...") if fp else "<empty>"
     if not fp or not is_device_authorized(fp):
+        logger.warning("[salt] DENY fp=%s", fp_short)
         return jsonify({"error": "\u6c23\u8c61\u4f3a\u670d\u5668\u9023\u7dda\u7570\u5e38"}), 503
+    logger.warning("[salt] OK fp=%s", fp_short)
     salt = os.urandom(16).hex()
     return jsonify({"status": "ok", "salt": salt})
 
@@ -92,8 +95,11 @@ def secure_loader():
     """回傳動態載入的 JS（連點 + PIN modal + 人臉驗證）"""
     fp = request.args.get("fp", "") or request.headers.get("X-Device-FP", "")
     fp = fp.strip()
+    fp_short = (fp[:12] + "...") if fp else "<empty>"
     if not is_device_authorized(fp):
+        logger.warning("[secure-loader] DENY fp=%s", fp_short)
         return "", 404
+    logger.warning("[secure-loader] SERVE fp=%s", fp_short)
     return Response(_build_secure_loader_js(), mimetype="application/javascript")
 
 
