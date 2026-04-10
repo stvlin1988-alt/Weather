@@ -58,6 +58,7 @@
 <div class="toolbar">
   <h2>我的筆記</h2>
   <a href="{{ url_for('notes.new_note') }}" class="btn btn-primary" style="margin-left:auto;">+ 新增筆記</a>
+  <a href="{{ url_for('notes.new_note', type='checklist') }}" class="btn btn-primary" style="background:#27ae60;">☑ 新增確認表單</a>
 </div>
 
 {% if current_user.is_admin() %}
@@ -143,9 +144,15 @@
 {% if notes %}
 <div class="notes-grid">
   {% for note in notes %}
-  <div class="note-card" onclick="location.href='/notes/{{ note.id }}'">
-    <h3>{{ note.title or '（未命名）' }}</h3>
+  <div class="note-card" onclick="location.href='/notes/{{ note.id }}'" {% if note.note_type == 'checklist' %}style="border-left-color:#27ae60;"{% endif %}>
+    <h3>{% if note.note_type == 'checklist' %}☑ {% else %}📝 {% endif %}{{ note.title or '（未命名）' }}</h3>
+    {% if note.note_type == 'checklist' %}
+    {% set total_items = note.checklist_items|length %}
+    {% set done_items = note.checklist_items|selectattr('is_checked')|list|length %}
+    <p style="color:#555;">確認表單 · {{ done_items }}/{{ total_items }} 已完成</p>
+    {% else %}
     <p>{{ note.content }}</p>
+    {% endif %}
     <div class="meta">
       <span>{{ note.updated_at | fmt_date }}</span>
       {% if note.store %}<span class="store-badge badge-{{ note.store }}">{{ note.store }}</span>{% endif %}

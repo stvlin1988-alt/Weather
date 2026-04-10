@@ -67,6 +67,7 @@ class Note(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     author_name = db.Column(db.Text, nullable=True)  # 建立當下的作者帳號（刪除使用者後保留）
+    note_type = db.Column(db.Text, nullable=False, default="note")  # 'note' | 'checklist'
     title = db.Column(db.Text, nullable=False, default="")
     content = db.Column(db.Text, nullable=False, default="")
     ai_summary = db.Column(db.Text)
@@ -125,11 +126,29 @@ class UserLog(db.Model):
     target = db.relationship("User", foreign_keys=[target_id])
 
 
+class ChecklistItem(db.Model):
+    __tablename__ = "checklist_items"
+
+    id = db.Column(db.Integer, primary_key=True)
+    note_id = db.Column(db.Integer, db.ForeignKey("notes.id", ondelete="CASCADE"), nullable=False)
+    order_index = db.Column(db.Integer, nullable=False, default=0)
+    text = db.Column(db.Text, nullable=False, default="")
+    is_checked = db.Column(db.Boolean, nullable=False, default=False)
+    checked_at = db.Column(db.DateTime, nullable=True)
+    checked_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    checked_by_name = db.Column(db.Text, nullable=True)  # 快照
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    note = db.relationship("Note", backref=db.backref("checklist_items", lazy=True, cascade="all, delete-orphan", order_by="ChecklistItem.order_index"))
+    checker = db.relationship("User", foreign_keys=[checked_by])
+
+
 class NoteAttachment(db.Model):
     __tablename__ = "note_attachments"
 
     id = db.Column(db.Integer, primary_key=True)
     note_id = db.Column(db.Integer, db.ForeignKey("notes.id", ondelete="CASCADE"), nullable=False)
+    checklist_item_id = db.Column(db.Integer, db.ForeignKey("checklist_items.id", ondelete="CASCADE"), nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     object_key = db.Column(db.Text, nullable=False)
     filename = db.Column(db.Text, nullable=False)
@@ -138,6 +157,7 @@ class NoteAttachment(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     note = db.relationship("Note", backref=db.backref("attachments", lazy=True, cascade="all, delete-orphan"))
+    checklist_item = db.relationship("ChecklistItem", backref=db.backref("attachments", lazy=True, cascade="all, delete-orphan"))
     uploader = db.relationship("User", foreign_keys=[user_id])
 
 

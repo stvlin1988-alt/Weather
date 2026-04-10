@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, render_template, current_app
 from flask_login import login_required, current_user
 from extensions import db
-from models import Note, Store, NoteLog, STATUS_CHOICES, PRIORITY_CHOICES
+from models import Note, Store, NoteLog, ChecklistItem, STATUS_CHOICES, PRIORITY_CHOICES
 from admin.routes import call_llm
 
 notes_bp = Blueprint("notes", __name__, url_prefix="/notes")
@@ -114,11 +114,15 @@ def index():
 @login_required
 def new_note():
     stores = _get_stores()
+    note_type = request.args.get("type", "note")
+    if note_type not in ("note", "checklist"):
+        note_type = "note"
     today = datetime.now(_TW).strftime("%-m/%-d")
-    default_title = f"{today} {current_user.username}筆記"
+    type_label = "確認表單" if note_type == "checklist" else "筆記"
+    default_title = f"{today} {current_user.username}{type_label}"
     return render_template("notes/editor.html", note=None, stores=stores,
                            status_choices=STATUS_CHOICES, priority_choices=PRIORITY_CHOICES,
-                           default_title=default_title)
+                           default_title=default_title, note_type=note_type)
 
 
 @notes_bp.route("/api", methods=["GET"])
@@ -158,6 +162,7 @@ def list_notes():
 
     return jsonify([{
         "id": n.id, "title": n.title, "content": n.content,
+        "note_type": n.note_type or "note",
         "store": n.store, "status": n.status or "pending",
         "priority": n.priority or "medium",
         "author": n.display_author,
@@ -180,9 +185,11 @@ def create_note():
         store = current_user.store if current_user.store in stores else None
     status = data.get("status") if data.get("status") in STATUS_CHOICES else "pending"
     priority = data.get("priority") if data.get("priority") in PRIORITY_CHOICES else "medium"
+    note_type = data.get("note_type") if data.get("note_type") in ("note", "checklist") else "note"
     note = Note(
         user_id=current_user.id,
         author_name=current_user.username,
+        note_type=note_type,
         title=data.get("title", "未命名筆記"),
         content=data.get("content", ""),
         store=store,
@@ -212,6 +219,7 @@ def get_note(note_id):
         updater = u.username if u else None
     return jsonify({
         "id": note.id, "title": note.title, "content": note.content,
+        "note_type": note.note_type or "note",
         "store": note.store, "status": note.status or "pending",
         "priority": note.priority or "medium",
         "ai_summary": note.ai_summary, "ai_outline": note.ai_outline,
@@ -466,6 +474,123 @@ def notes_ai_summary():
     return jsonify({"status": "accepted", "task_id": task_id})
 
 
+# ── Checklist Item CRUD ────────────────────────────────
+
+def _get_note_for_edit(note_id):
+    """取得筆記（檢查權限）"""
+    if current_user.is_super_admin():
+        return Note.query.get(note_id)
+    else:
+        return Note.query.filter_by(id=note_id, store=current_user.store).first()
+
+
+def _checklist_item_json(item):
+    from storage import get_signed_url
+    return {
+        "id": item.id,
+        "note_id": item.note_id,
+        "order_index": item.order_index,
+        "text": item.text,
+        "is_checked": item.is_checked,
+        "checked_at": item.checked_at.isoformat() if item.checked_at else None,
+        "checked_by_name": item.checked_by_name or (item.checker.username if item.checker else None),
+        "created_at": item.created_at.isoformat() if item.created_at else "",
+        "attachments": [{
+            "id": a.id,
+            "filename": a.filename,
+            "content_type": a.content_type,
+            "file_size": a.file_size,
+            "url": get_signed_url(a.object_key),
+        } for a in item.attachments],
+    }
+
+
+@notes_bp.route("/api/<int:note_id>/items", methods=["GET"])
+@login_required
+def list_checklist_items(note_id):
+    note = _get_note_for_edit(note_id)
+    if not note:
+        return jsonify({"status": "error", "message": "筆記不存在或無權限"}), 404
+    items = ChecklistItem.query.filter_by(note_id=note_id).order_by(ChecklistItem.order_index, ChecklistItem.id).all()
+    return jsonify({"status": "ok", "items": [_checklist_item_json(i) for i in items]})
+
+
+@notes_bp.route("/api/<int:note_id>/items", methods=["POST"])
+@login_required
+def create_checklist_item(note_id):
+    note = _get_note_for_edit(note_id)
+    if not note:
+        return jsonify({"status": "error", "message": "筆記不存在或無權限"}), 404
+    data = request.get_json(silent=True) or {}
+    text = (data.get("text") or "").strip()
+    # 取得目前最大 order_index
+    max_order = db.session.query(db.func.max(ChecklistItem.order_index)).filter_by(note_id=note_id).scalar() or 0
+    item = ChecklistItem(
+        note_id=note_id,
+        order_index=max_order + 1,
+        text=text,
+        is_checked=False,
+    )
+    db.session.add(item)
+    note.updated_at = datetime.utcnow()
+    note.updated_by = current_user.id
+    db.session.commit()
+    return jsonify({"status": "ok", "item": _checklist_item_json(item)}), 201
+
+
+@notes_bp.route("/api/items/<int:item_id>", methods=["PATCH"])
+@login_required
+def update_checklist_item(item_id):
+    item = ChecklistItem.query.get(item_id)
+    if not item:
+        return jsonify({"status": "error", "message": "項目不存在"}), 404
+    note = _get_note_for_edit(item.note_id)
+    if not note:
+        return jsonify({"status": "error", "message": "無權限"}), 403
+    data = request.get_json(silent=True) or {}
+    if "text" in data:
+        item.text = (data.get("text") or "").strip()
+    if "is_checked" in data:
+        is_checked = bool(data.get("is_checked"))
+        if is_checked and not item.is_checked:
+            item.is_checked = True
+            item.checked_at = datetime.utcnow()
+            item.checked_by = current_user.id
+            item.checked_by_name = current_user.username
+        elif not is_checked and item.is_checked:
+            item.is_checked = False
+            item.checked_at = None
+            item.checked_by = None
+            item.checked_by_name = None
+    note.updated_at = datetime.utcnow()
+    note.updated_by = current_user.id
+    db.session.commit()
+    return jsonify({"status": "ok", "item": _checklist_item_json(item)})
+
+
+@notes_bp.route("/api/items/<int:item_id>", methods=["DELETE"])
+@login_required
+def delete_checklist_item(item_id):
+    from storage import delete_attachment
+    item = ChecklistItem.query.get(item_id)
+    if not item:
+        return jsonify({"status": "error", "message": "項目不存在"}), 404
+    note = _get_note_for_edit(item.note_id)
+    if not note:
+        return jsonify({"status": "error", "message": "無權限"}), 403
+    # 刪 R2 上的附件
+    for a in list(item.attachments):
+        try:
+            delete_attachment(a.object_key)
+        except Exception:
+            pass
+    db.session.delete(item)
+    note.updated_at = datetime.utcnow()
+    note.updated_by = current_user.id
+    db.session.commit()
+    return jsonify({"status": "ok"})
+
+
 @notes_bp.route("/api/attachments/upload", methods=["POST"])
 @login_required
 def upload_attachment_api():
@@ -473,6 +598,7 @@ def upload_attachment_api():
     from storage import upload_attachment, get_signed_url, ALLOWED_CONTENT_TYPES, MAX_FILE_SIZE
 
     note_id = request.form.get("note_id", type=int)
+    item_id = request.form.get("item_id", type=int)
     if not note_id:
         return jsonify({"status": "error", "message": "缺少 note_id"}), 400
 
@@ -484,6 +610,12 @@ def upload_attachment_api():
         note = Note.query.filter_by(id=note_id, store=current_user.store).first()
     if not note:
         return jsonify({"status": "error", "message": "筆記不存在或無權限"}), 404
+
+    # 驗證 item 屬於這個 note
+    if item_id:
+        item = ChecklistItem.query.filter_by(id=item_id, note_id=note_id).first()
+        if not item:
+            return jsonify({"status": "error", "message": "項目不存在"}), 404
 
     file = request.files.get("file")
     if not file or not file.filename:
@@ -503,6 +635,7 @@ def upload_attachment_api():
 
     attachment = NoteAttachment(
         note_id=note_id,
+        checklist_item_id=item_id,
         user_id=current_user.id,
         object_key=object_key,
         filename=file.filename,
@@ -544,7 +677,8 @@ def list_attachments():
     if not note:
         return jsonify({"status": "error", "message": "筆記不存在或無權限"}), 404
 
-    attachments = NoteAttachment.query.filter_by(note_id=note_id).order_by(NoteAttachment.created_at).all()
+    # 只列出直接屬於筆記的附件（排除屬於 checklist 項目的）
+    attachments = NoteAttachment.query.filter_by(note_id=note_id, checklist_item_id=None).order_by(NoteAttachment.created_at).all()
     result = []
     for a in attachments:
         url = get_signed_url(a.object_key)

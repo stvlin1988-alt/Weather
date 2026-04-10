@@ -78,6 +78,7 @@ def register_ws_events(socketio):
         notes = query.order_by(Note.updated_at.desc()).all()
         emit('r', {'op': 'ln', 'notes': [{
             'id': n.id, 'title': n.title, 'content': n.content,
+            'note_type': n.note_type or 'note',
             'store': n.store, 'status': n.status or 'pending',
             'priority': n.priority or 'medium',
             'author': n.display_author,
@@ -96,9 +97,11 @@ def register_ws_events(socketio):
             store = current_user.store if current_user.store in stores else None
         status = data.get('status') if data.get('status') in STATUS_CHOICES else 'pending'
         priority = data.get('priority') if data.get('priority') in PRIORITY_CHOICES else 'medium'
+        note_type = data.get('note_type') if data.get('note_type') in ('note', 'checklist') else 'note'
         note = Note(
             user_id=current_user.id,
             author_name=current_user.username,
+            note_type=note_type,
             title=data.get('title', '未命名筆記'),
             content=data.get('content', ''),
             store=store, status=status, priority=priority,

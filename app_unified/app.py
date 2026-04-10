@@ -110,6 +110,21 @@ def create_app():
                     ))
                 except Exception:
                     pass
+                # notes.note_type：區分一般筆記和確認表單
+                try:
+                    db.session.execute(db.text(
+                        "ALTER TABLE notes ADD COLUMN IF NOT EXISTS note_type TEXT NOT NULL DEFAULT 'note'"
+                    ))
+                except Exception:
+                    pass
+                # note_attachments.checklist_item_id：附件可以綁定到確認表單項目
+                try:
+                    db.session.execute(db.text(
+                        "ALTER TABLE note_attachments ADD COLUMN IF NOT EXISTS checklist_item_id INTEGER "
+                        "REFERENCES checklist_items(id) ON DELETE CASCADE"
+                    ))
+                except Exception:
+                    pass
                 try:
                     db.session.execute(db.text("""
                         DO $$

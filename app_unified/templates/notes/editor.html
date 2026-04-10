@@ -111,9 +111,14 @@
     <button class="btn btn-danger" id="btn-delete" onclick="doDelete()" style="margin-left:auto;">刪除</button>
     {% endif %}
   </div>
+
+  {% set editor_type = note.note_type if note else (note_type or 'note') %}
+  <input type="hidden" id="editor-type" value="{{ editor_type }}">
+
+  {% if editor_type != 'checklist' %}
   <textarea id="content-area" placeholder="開始輸入筆記內容…">{{ note.content if note else '' }}</textarea>
 
-  <!-- 附件區 -->
+  <!-- 附件區（一般筆記）-->
   <div class="attachment-section" id="attachment-section">
     <h4>附件</h4>
     <div class="upload-bar">
@@ -124,6 +129,38 @@
     <div class="upload-progress" id="upload-progress"><div class="upload-progress-bar" id="upload-progress-bar"></div></div>
     <div class="attachment-list" id="attachment-list"></div>
   </div>
+  {% else %}
+  <!-- 確認表單區（checklist）-->
+  <div id="checklist-wrap" style="margin-top:.5rem;">
+    <h4 style="font-size:.9rem;color:#666;margin-bottom:.5rem;">☑ 確認項目</h4>
+    <div id="checklist-items"></div>
+    <button class="btn btn-primary" type="button" onclick="openAddItemDialog()" style="background:#27ae60;margin-top:.5rem;">+ 新增項目</button>
+  </div>
+
+  <!-- 新增/編輯項目 Modal -->
+  <div id="item-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:flex-start;justify-content:center;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:2rem 0;">
+    <div class="card" style="max-width:500px;width:90%;position:relative;">
+      <button onclick="closeItemDialog()" style="position:absolute;top:.5rem;right:.75rem;background:none;border:none;font-size:1.4rem;cursor:pointer;min-width:44px;min-height:44px;">&times;</button>
+      <h3 id="item-modal-title" style="margin-bottom:1rem;">新增項目</h3>
+      <input type="hidden" id="item-modal-id">
+      <div style="margin-bottom:.75rem;">
+        <label style="font-size:.85rem;font-weight:600;">項目內容</label>
+        <textarea id="item-modal-text" rows="3" class="form-control" placeholder="輸入項目內容..." style="resize:vertical;min-height:80px;"></textarea>
+      </div>
+      <div style="margin-bottom:.75rem;">
+        <label style="font-size:.85rem;font-weight:600;">附件（圖片/影片）</label>
+        <div style="margin-top:.3rem;">
+          <button class="btn btn-secondary" type="button" onclick="document.getElementById('item-file-input').click()" style="font-size:.85rem;">📎 上傳檔案</button>
+          <input type="file" id="item-file-input" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm" multiple onchange="handleItemFileUpload(this)" style="display:none;">
+          <span id="item-upload-status" style="font-size:.8rem;color:#888;margin-left:.5rem;"></span>
+        </div>
+        <div id="item-attachment-list" style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem;"></div>
+      </div>
+      <button class="btn btn-primary" onclick="saveItemFromDialog()" style="width:100%;background:#27ae60;">完成</button>
+      <div id="item-modal-msg" style="font-size:.85rem;margin-top:.5rem;min-height:1.2em;"></div>
+    </div>
+  </div>
+  {% endif %}
 
   <!-- 全螢幕預覽 -->
   <div class="fullscreen-overlay" id="fullscreen-overlay" onclick="closeFullscreen()">
@@ -175,9 +212,12 @@ function selectPriority(btn) {
 // 暫存待上傳的檔案（新筆記用）
 var pendingFiles = [];
 
+var EDITOR_TYPE = (document.getElementById('editor-type') || {}).value || 'note';
+
 function doSave() {
   var title = document.getElementById('title-input').value.trim() || '未命名筆記';
-  var content = document.getElementById('content-area').value;
+  var contentEl = document.getElementById('content-area');
+  var content = contentEl ? contentEl.value : '';
   var store = currentStore || null;
   var statusEl = document.getElementById('save-status');
   var saveBtn = document.getElementById('btn-save');
@@ -186,10 +226,12 @@ function doSave() {
 
   var url = NOTE_ID ? ('/notes/api/' + NOTE_ID) : '/notes/api';
   var method = NOTE_ID ? 'PUT' : 'POST';
+  var body = { title: title, content: content, store: store, status: currentStatus, priority: currentPriority };
+  if (!NOTE_ID) body.note_type = EDITOR_TYPE;
   fetch(url, {
     method: method,
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ title: title, content: content, store: store, status: currentStatus, priority: currentPriority })
+    body: JSON.stringify(body)
   }).then(function(res) { return res.json(); }).then(function(data) {
     if (data.status === 'ok' || data.id) {
       if (!NOTE_ID && data.id) {
@@ -210,6 +252,39 @@ function doSave() {
     }
     else { statusEl.textContent = '儲存失敗：' + (data.message || '未知錯誤'); saveBtn.disabled = false; }
   }).catch(function(err) { statusEl.textContent = '儲存失敗：' + err.message; saveBtn.disabled = false; });
+}
+
+// 確保筆記已建立（checklist 新增項目前會呼叫）
+function ensureNoteExists() {
+  if (NOTE_ID) return Promise.resolve(NOTE_ID);
+  var title = document.getElementById('title-input').value.trim() || '未命名筆記';
+  var store = currentStore || null;
+  return fetch('/notes/api', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      title: title, content: '', store: store,
+      status: currentStatus, priority: currentPriority, note_type: EDITOR_TYPE
+    })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.id) {
+      NOTE_ID = d.id;
+      history.replaceState(null, '', '/notes/' + NOTE_ID);
+      // 顯示刪除按鈕
+      var tb = document.querySelector('.editor-toolbar');
+      if (tb && !document.getElementById('btn-delete')) {
+        var b = document.createElement('button');
+        b.className = 'btn btn-danger';
+        b.id = 'btn-delete';
+        b.textContent = '刪除';
+        b.style.marginLeft = 'auto';
+        b.onclick = doDelete;
+        tb.appendChild(b);
+      }
+      return NOTE_ID;
+    }
+    throw new Error(d.message || '儲存失敗');
+  });
 }
 
 function uploadPendingFiles() {
@@ -411,8 +486,279 @@ function closeFullscreen() {
   document.getElementById('fullscreen-img').src = '';
 }
 
-if (NOTE_ID) loadAttachments();
+if (NOTE_ID && EDITOR_TYPE !== 'checklist') loadAttachments();
 
+// ══════════ Checklist 功能 ══════════
+
+var _itemAttachmentsPending = []; // 暫存新項目的附件（在 modal 裡還沒按完成前）
+var _itemAttachmentsSaved = [];   // 編輯模式下已儲存的附件
+
+function loadChecklistItems() {
+  if (!NOTE_ID || EDITOR_TYPE !== 'checklist') return;
+  fetch('/notes/api/' + NOTE_ID + '/items')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.status !== 'ok') return;
+      var wrap = document.getElementById('checklist-items');
+      wrap.innerHTML = '';
+      d.items.forEach(function(item) {
+        wrap.appendChild(renderChecklistItem(item));
+      });
+    }).catch(function() {});
+}
+
+function renderChecklistItem(item) {
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:.6rem;padding:.75rem;border:1px solid #e0e0e0;border-radius:8px;margin-bottom:.5rem;background:#fafafa;';
+  row.dataset.itemId = item.id;
+
+  // checkbox
+  var cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = !!item.is_checked;
+  cb.style.cssText = 'width:22px;height:22px;margin-top:.2rem;cursor:pointer;flex-shrink:0;';
+  cb.onchange = function() {
+    toggleChecklistItem(item.id, cb.checked, row);
+  };
+  row.appendChild(cb);
+
+  // content
+  var content = document.createElement('div');
+  content.style.cssText = 'flex:1;min-width:0;';
+
+  var text = document.createElement('div');
+  text.style.cssText = 'font-size:.95rem;white-space:pre-wrap;word-break:break-word;' + (item.is_checked ? 'text-decoration:line-through;color:#888;' : '');
+  text.textContent = item.text || '（無內容）';
+  content.appendChild(text);
+
+  // attachments
+  if (item.attachments && item.attachments.length > 0) {
+    var atts = document.createElement('div');
+    atts.style.cssText = 'display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.4rem;';
+    item.attachments.forEach(function(a) {
+      atts.appendChild(createItemAttThumb(a));
+    });
+    content.appendChild(atts);
+  }
+
+  // meta
+  var meta = document.createElement('div');
+  meta.style.cssText = 'font-size:.75rem;color:#999;margin-top:.4rem;';
+  if (item.is_checked && item.checked_by_name) {
+    meta.textContent = '✓ 由 ' + item.checked_by_name + ' 在 ' + fmtDateTime(item.checked_at) + ' 完成';
+  }
+  content.appendChild(meta);
+
+  row.appendChild(content);
+
+  // edit/delete buttons
+  var actions = document.createElement('div');
+  actions.style.cssText = 'display:flex;flex-direction:column;gap:.3rem;flex-shrink:0;';
+  var editBtn = document.createElement('button');
+  editBtn.className = 'btn btn-secondary';
+  editBtn.style.cssText = 'font-size:.75rem;padding:.25rem .5rem;min-height:30px;';
+  editBtn.textContent = '✎';
+  editBtn.onclick = function() { openEditItemDialog(item); };
+  actions.appendChild(editBtn);
+
+  var delBtn = document.createElement('button');
+  delBtn.className = 'btn btn-danger';
+  delBtn.style.cssText = 'font-size:.75rem;padding:.25rem .5rem;min-height:30px;';
+  delBtn.textContent = '×';
+  delBtn.onclick = function() { deleteChecklistItem(item.id); };
+  actions.appendChild(delBtn);
+  row.appendChild(actions);
+
+  return row;
+}
+
+function createItemAttThumb(a) {
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'position:relative;';
+  if (a.content_type && a.content_type.indexOf('image/') === 0) {
+    var img = document.createElement('img');
+    img.src = a.url;
+    img.style.cssText = 'width:80px;height:80px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #ddd;';
+    img.onclick = function() { openFullscreen(a.url); };
+    wrap.appendChild(img);
+  } else {
+    var vid = document.createElement('video');
+    vid.src = a.url;
+    vid.controls = true;
+    vid.style.cssText = 'width:140px;max-height:100px;border-radius:6px;border:1px solid #ddd;';
+    wrap.appendChild(vid);
+  }
+  return wrap;
+}
+
+function fmtDateTime(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  if (isNaN(d)) return '';
+  var mm = (d.getMonth() + 1);
+  var dd = d.getDate();
+  var h = d.getHours();
+  var m = d.getMinutes();
+  return mm + '/' + dd + ' ' + h + ':' + (m < 10 ? '0' + m : m);
+}
+
+function toggleChecklistItem(itemId, isChecked, rowEl) {
+  fetch('/notes/api/items/' + itemId, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ is_checked: isChecked })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.status === 'ok') {
+      loadChecklistItems();
+    }
+  });
+}
+
+function deleteChecklistItem(itemId) {
+  if (!confirm('確定刪除這個項目？')) return;
+  fetch('/notes/api/items/' + itemId, { method: 'DELETE' })
+    .then(function(r) { return r.json(); })
+    .then(function(d) { if (d.status === 'ok') loadChecklistItems(); });
+}
+
+function openAddItemDialog() {
+  document.getElementById('item-modal-id').value = '';
+  document.getElementById('item-modal-title').textContent = '新增項目';
+  document.getElementById('item-modal-text').value = '';
+  document.getElementById('item-attachment-list').innerHTML = '';
+  document.getElementById('item-upload-status').textContent = '';
+  document.getElementById('item-modal-msg').textContent = '';
+  _itemAttachmentsPending = [];
+  _itemAttachmentsSaved = [];
+  document.getElementById('item-modal').style.display = 'flex';
+}
+
+function openEditItemDialog(item) {
+  document.getElementById('item-modal-id').value = item.id;
+  document.getElementById('item-modal-title').textContent = '編輯項目';
+  document.getElementById('item-modal-text').value = item.text || '';
+  document.getElementById('item-upload-status').textContent = '';
+  document.getElementById('item-modal-msg').textContent = '';
+  _itemAttachmentsPending = [];
+  _itemAttachmentsSaved = (item.attachments || []).slice();
+  renderItemAttachmentList();
+  document.getElementById('item-modal').style.display = 'flex';
+}
+
+function closeItemDialog() {
+  document.getElementById('item-modal').style.display = 'none';
+  _itemAttachmentsPending = [];
+  _itemAttachmentsSaved = [];
+}
+
+function renderItemAttachmentList() {
+  var list = document.getElementById('item-attachment-list');
+  list.innerHTML = '';
+  // 已儲存的
+  _itemAttachmentsSaved.forEach(function(a, idx) {
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative;';
+    var thumb = createItemAttThumb(a);
+    wrap.appendChild(thumb);
+    var x = document.createElement('button');
+    x.textContent = '×';
+    x.type = 'button';
+    x.style.cssText = 'position:absolute;top:-6px;right:-6px;background:#e74c3c;color:#fff;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:14px;';
+    x.onclick = function() {
+      fetch('/notes/api/attachments/' + a.id, { method: 'DELETE' }).then(function() {
+        _itemAttachmentsSaved.splice(idx, 1);
+        renderItemAttachmentList();
+      });
+    };
+    wrap.appendChild(x);
+    list.appendChild(wrap);
+  });
+  // 待上傳的
+  _itemAttachmentsPending.forEach(function(file, idx) {
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative;width:80px;height:80px;background:#eee;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:.7rem;color:#666;text-align:center;padding:.2rem;overflow:hidden;';
+    if (file.type.indexOf('image/') === 0) {
+      var img = document.createElement('img');
+      img.src = URL.createObjectURL(file);
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+      wrap.innerHTML = '';
+      wrap.appendChild(img);
+    } else {
+      wrap.textContent = '🎬 ' + file.name.slice(0, 15);
+    }
+    var x = document.createElement('button');
+    x.textContent = '×';
+    x.type = 'button';
+    x.style.cssText = 'position:absolute;top:-6px;right:-6px;background:#e74c3c;color:#fff;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:14px;';
+    x.onclick = function() {
+      _itemAttachmentsPending.splice(idx, 1);
+      renderItemAttachmentList();
+    };
+    wrap.appendChild(x);
+    list.appendChild(wrap);
+  });
+}
+
+function handleItemFileUpload(input) {
+  var files = Array.from(input.files || []);
+  files.forEach(function(f) { _itemAttachmentsPending.push(f); });
+  renderItemAttachmentList();
+  input.value = '';
+}
+
+function saveItemFromDialog() {
+  var itemId = document.getElementById('item-modal-id').value;
+  var text = document.getElementById('item-modal-text').value.trim();
+  var msgEl = document.getElementById('item-modal-msg');
+  if (!text && _itemAttachmentsPending.length === 0 && _itemAttachmentsSaved.length === 0) {
+    msgEl.textContent = '請輸入內容或附件';
+    msgEl.style.color = '#e74c3c';
+    return;
+  }
+  msgEl.textContent = '儲存中...';
+  msgEl.style.color = '#666';
+
+  ensureNoteExists().then(function() {
+    // 新增 or 更新項目
+    var url, method;
+    if (itemId) {
+      url = '/notes/api/items/' + itemId;
+      method = 'PATCH';
+    } else {
+      url = '/notes/api/' + NOTE_ID + '/items';
+      method = 'POST';
+    }
+    return fetch(url, {
+      method: method,
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ text: text })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+      if (d.status !== 'ok') throw new Error(d.message || '儲存失敗');
+      return d.item.id;
+    });
+  }).then(function(savedItemId) {
+    // 上傳待上傳的附件
+    if (_itemAttachmentsPending.length === 0) return savedItemId;
+    var uploads = _itemAttachmentsPending.map(function(file) {
+      var fd = new FormData();
+      fd.append('file', file);
+      fd.append('note_id', NOTE_ID);
+      fd.append('item_id', savedItemId);
+      return fetch('/notes/api/attachments/upload', { method: 'POST', body: fd })
+        .then(function(r) { return r.json(); })
+        .then(function(d) { if (d.status !== 'ok') throw new Error(d.message || '附件上傳失敗'); });
+    });
+    return Promise.all(uploads).then(function() { return savedItemId; });
+  }).then(function() {
+    closeItemDialog();
+    loadChecklistItems();
+  }).catch(function(err) {
+    msgEl.textContent = err.message;
+    msgEl.style.color = '#e74c3c';
+  });
+}
+
+if (EDITOR_TYPE === 'checklist' && NOTE_ID) loadChecklistItems();
 
 </script>
 {% endblock %}
