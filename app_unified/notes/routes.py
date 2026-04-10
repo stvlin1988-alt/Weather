@@ -12,6 +12,27 @@ RANGE_DAYS = {"today": 0, "3d": 3, "7d": 7, "30d": 30}
 
 _TW = timezone(timedelta(hours=8))
 
+LOCK_TIMEOUT_MIN = 5
+
+
+def _lock_status(note):
+    """回傳 (is_locked_by_other, locker_user_or_None)"""
+    if not note.locked_by or not note.locked_at:
+        return False, None
+    age_sec = (datetime.utcnow() - note.locked_at).total_seconds()
+    if age_sec > LOCK_TIMEOUT_MIN * 60:
+        return False, None  # 過期鎖視為無效
+    if note.locked_by == current_user.id:
+        return False, None  # 自己的鎖
+    from models import User
+    locker = User.query.get(note.locked_by)
+    return True, locker
+
+
+def _acquire_lock(note):
+    note.locked_by = current_user.id
+    note.locked_at = datetime.utcnow()
+
 
 def _get_business_day_range():
     """回傳目前營業日的 (start, end)，以 UTC 表示（無 tzinfo）。"""
@@ -261,8 +282,16 @@ def update_note(note_id):
             diff_parts.append(f"優先度: {note.priority} → {data['priority']}")
         note.priority = data["priority"]
 
+    # 編輯鎖檢查：如果被別人鎖定（非過期），拒絕
+    is_locked, locker = _lock_status(note)
+    if is_locked:
+        return jsonify({"status": "error", "message": f"目前由 {locker.username if locker else '其他人'} 編輯中"}), 409
+
     note.updated_by = current_user.id
     note.updated_at = datetime.utcnow()
+    # 儲存後釋放鎖
+    note.locked_by = None
+    note.locked_at = None
     db.session.flush()
 
     if diff_parts:
@@ -277,6 +306,59 @@ def update_note(note_id):
 
     db.session.commit()
     return jsonify({"status": "ok"})
+
+
+@notes_bp.route("/api/<int:note_id>/lock/heartbeat", methods=["POST"])
+@login_required
+def heartbeat_lock(note_id):
+    note = Note.query.get(note_id)
+    if not note:
+        return jsonify({"status": "error", "message": "筆記不存在"}), 404
+    # 店別權限
+    if not current_user.is_super_admin():
+        if note.store and note.store != current_user.store:
+            return jsonify({"status": "error", "message": "無權限"}), 403
+    if note.locked_by == current_user.id:
+        note.locked_at = datetime.utcnow()
+        db.session.commit()
+        return jsonify({"status": "ok"})
+    # 鎖已失效或被別人搶走
+    is_locked, locker = _lock_status(note)
+    if not is_locked:
+        # 沒人持有，重新取得
+        _acquire_lock(note)
+        db.session.commit()
+        return jsonify({"status": "ok", "reacquired": True})
+    return jsonify({"status": "error", "message": f"鎖已由 {locker.username if locker else '其他人'} 持有"}), 409
+
+
+@notes_bp.route("/api/<int:note_id>/lock/release", methods=["POST"])
+@login_required
+def release_lock_endpoint(note_id):
+    note = Note.query.get(note_id)
+    if not note:
+        return jsonify({"status": "error", "message": "筆記不存在"}), 404
+    # 店別權限檢查
+    if not current_user.is_super_admin():
+        if note.store and note.store != current_user.store:
+            return jsonify({"status": "error", "message": "無權限"}), 403
+    data = request.get_json(silent=True) or {}
+    force = bool(data.get("force"))
+    if force:
+        # 強制釋放需要 admin/super_admin
+        if not (current_user.is_admin() or current_user.is_super_admin()):
+            return jsonify({"status": "error", "message": "僅 admin 可強制釋放"}), 403
+        note.locked_by = None
+        note.locked_at = None
+        db.session.commit()
+        return jsonify({"status": "ok", "forced": True})
+    # 一般釋放：只能釋放自己的鎖
+    if note.locked_by == current_user.id:
+        note.locked_by = None
+        note.locked_at = None
+        db.session.commit()
+        return jsonify({"status": "ok"})
+    return jsonify({"status": "ok", "skipped": True})
 
 
 @notes_bp.route("/api/<int:note_id>", methods=["DELETE"])
@@ -733,5 +815,12 @@ def edit_note(note_id):
     else:
         note = Note.query.filter_by(id=note_id, store=current_user.store).first_or_404()
     stores = _get_stores()
+    # 編輯鎖
+    is_locked, locker = _lock_status(note)
+    if not is_locked:
+        _acquire_lock(note)
+        db.session.commit()
     return render_template("notes/editor.html", note=note, stores=stores,
-                           status_choices=STATUS_CHOICES, priority_choices=PRIORITY_CHOICES)
+                           status_choices=STATUS_CHOICES, priority_choices=PRIORITY_CHOICES,
+                           is_readonly=is_locked,
+                           locker_name=locker.username if locker else None)

@@ -140,8 +140,18 @@ def register_ws_events(socketio):
             if data['priority'] != note.priority:
                 diff_parts.append(f"優先度: {note.priority} → {data['priority']}")
             note.priority = data['priority']
+        # 編輯鎖檢查
+        if note.locked_by and note.locked_by != current_user.id:
+            from datetime import timedelta as _td
+            age = (datetime.utcnow() - note.locked_at).total_seconds() if note.locked_at else 9999
+            if age < 5 * 60:
+                emit('r', {'op': 'un', 'status': 'error', 'message': '目前由他人編輯中'})
+                return
         note.updated_by = current_user.id
         note.updated_at = datetime.utcnow()
+        # 儲存後釋放鎖
+        note.locked_by = None
+        note.locked_at = None
         db.session.flush()
         if diff_parts:
             log = NoteLog(note_id=note.id, note_title=note.title, user_id=current_user.id, action='edit', diff='; '.join(diff_parts))

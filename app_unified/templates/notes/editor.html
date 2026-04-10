@@ -59,10 +59,18 @@
 </style>
 {% endblock %}
 {% block content %}
-<div style="margin-bottom:1rem;display:flex;align-items:center;gap:.5rem;">
-  <a href="{{ url_for('notes.index') }}" class="btn btn-secondary">← 返回</a>
+<div style="margin-bottom:1rem;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">
+  <a href="{{ url_for('notes.index') }}" class="btn btn-secondary" id="btn-back">← 返回</a>
   <span class="save-status" id="save-status"></span>
 </div>
+{% if is_readonly %}
+<div id="lock-banner" style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.95rem;color:#856404;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
+  <span>⚠️ 目前由 <strong>{{ locker_name }}</strong> 編輯中，無法編輯</span>
+  {% if current_user.is_admin() or current_user.is_super_admin() %}
+  <button class="btn btn-danger" id="btn-force-release" type="button" onclick="forceReleaseLock()" style="font-size:.8rem;padding:.3rem .7rem;margin-left:auto;">強制釋放鎖</button>
+  {% endif %}
+</div>
+{% endif %}
 <div class="card editor-wrap">
   <input type="text" id="title-input" placeholder="筆記標題…" value="{{ note.title if note else default_title }}">
   {% if note and note.updated_by %}
@@ -174,6 +182,83 @@ var NOTE_ID = {{ (note.id if note else None)|tojson }};
 var currentStore = {{ (note.store if note else current_user.store)|tojson }};
 var currentStatus = {{ (note.status if note else 'pending')|tojson }};
 var currentPriority = {{ (note.priority if note else 'medium')|tojson }};
+var IS_READONLY = {{ (is_readonly or false)|tojson }};
+
+// Readonly 模式：禁用所有輸入和按鈕（除了返回和強制釋放）
+function applyReadonly() {
+  if (!IS_READONLY) return;
+  var EXEMPT_IDS = ['btn-back', 'btn-force-release'];
+  var inputs = document.querySelectorAll('input, textarea, select, button');
+  for (var i = 0; i < inputs.length; i++) {
+    var el = inputs[i];
+    if (EXEMPT_IDS.indexOf(el.id) >= 0) continue;
+    if (el.tagName === 'BUTTON') el.disabled = true;
+    else if (el.tagName === 'INPUT' && el.type === 'checkbox') el.disabled = true;
+    else el.readOnly = true;
+    el.style.opacity = '0.6';
+    el.style.cursor = 'not-allowed';
+  }
+}
+document.addEventListener('DOMContentLoaded', applyReadonly);
+
+// 編輯鎖 heartbeat
+var _hbTimer = null;
+function startHeartbeat() {
+  if (!NOTE_ID || IS_READONLY) return;
+  _hbTimer = setInterval(function() {
+    fetch('/notes/api/' + NOTE_ID + '/lock/heartbeat', { method: 'POST' })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.status !== 'ok') {
+          // 鎖被搶走，停止 heartbeat 並提示
+          clearInterval(_hbTimer);
+          alert('編輯鎖已失效：' + (d.message || '未知'));
+        }
+      }).catch(function() {});
+  }, 30000); // 30 秒
+}
+function stopHeartbeat() { if (_hbTimer) clearInterval(_hbTimer); }
+
+function releaseLock() {
+  if (!NOTE_ID || IS_READONLY) return;
+  try {
+    navigator.sendBeacon && navigator.sendBeacon('/notes/api/' + NOTE_ID + '/lock/release', new Blob(['{}'], { type: 'application/json' }));
+  } catch (e) {}
+}
+
+function forceReleaseLock() {
+  if (!NOTE_ID) return;
+  if (!confirm('確定強制釋放此筆記的編輯鎖？')) return;
+  fetch('/notes/api/' + NOTE_ID + '/lock/release', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ force: true })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.status === 'ok') {
+      alert('鎖已釋放，即將重新載入');
+      location.reload();
+    } else {
+      alert(d.message || '釋放失敗');
+    }
+  });
+}
+
+window.addEventListener('beforeunload', function() {
+  stopHeartbeat();
+  releaseLock();
+});
+
+// 「返回」按鈕點擊時主動釋放鎖
+document.addEventListener('DOMContentLoaded', function() {
+  var backBtn = document.getElementById('btn-back');
+  if (backBtn && !IS_READONLY) {
+    backBtn.addEventListener('click', function() {
+      stopHeartbeat();
+      releaseLock();
+    });
+  }
+  if (NOTE_ID && !IS_READONLY) startHeartbeat();
+});
 
 {% if note and note.updated_by %}
 fetch('/notes/api/' + NOTE_ID).then(function(r) { return r.json(); }).then(function(data) {
@@ -281,6 +366,9 @@ function ensureNoteExists() {
         b.onclick = doDelete;
         tb.appendChild(b);
       }
+      // 取得編輯鎖並啟動 heartbeat（適用於 checklist 自動建立流程）
+      fetch('/notes/api/' + NOTE_ID + '/lock/heartbeat', { method: 'POST' }).catch(function() {});
+      if (!_hbTimer) startHeartbeat();
       return NOTE_ID;
     }
     throw new Error(d.message || '儲存失敗');
@@ -504,6 +592,7 @@ function loadChecklistItems() {
       d.items.forEach(function(item) {
         wrap.appendChild(renderChecklistItem(item));
       });
+      if (IS_READONLY) applyReadonly();
     }).catch(function() {});
 }
 

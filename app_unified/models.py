@@ -76,8 +76,12 @@ class Note(db.Model):
     status = db.Column(db.Text, nullable=False, default="pending")
     priority = db.Column(db.Text, nullable=False, default="medium")
     updated_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    locked_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    locked_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    locker = db.relationship("User", foreign_keys=[locked_by])
 
     logs = db.relationship("NoteLog", backref="note", lazy=True,
                            foreign_keys="NoteLog.note_id",

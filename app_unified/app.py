@@ -125,6 +125,20 @@ def create_app():
                     ))
                 except Exception:
                     pass
+                # notes.locked_by / locked_at：編輯鎖
+                try:
+                    db.session.execute(db.text(
+                        "ALTER TABLE notes ADD COLUMN IF NOT EXISTS locked_by INTEGER "
+                        "REFERENCES users(id) ON DELETE SET NULL"
+                    ))
+                except Exception:
+                    pass
+                try:
+                    db.session.execute(db.text(
+                        "ALTER TABLE notes ADD COLUMN IF NOT EXISTS locked_at TIMESTAMP"
+                    ))
+                except Exception:
+                    pass
                 try:
                     db.session.execute(db.text("""
                         DO $$
