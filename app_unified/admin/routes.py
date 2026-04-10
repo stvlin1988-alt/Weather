@@ -381,10 +381,39 @@ def approve_device(device_id):
     if role == "super_admin" and not current_user.is_super_admin():
         return jsonify({"status": "error", "message": "僅 super_admin 可指派此角色"}), 403
 
-    if User.query.filter_by(username=username).first():
-        return jsonify({"status": "error", "message": "帳號已存在"}), 409
-
     valid_stores = [s.name for s in Store.query.all()]
+    existing_user = User.query.filter_by(username=username).first()
+
+    if existing_user:
+        # 既有帳號 → 驗證 PIN 後綁定裝置（處理 PWA 重裝 / 換裝置 情境）
+        if not existing_user.check_password(pin):
+            return jsonify({"status": "error", "message": "此帳號已存在，但 PIN 碼錯誤"}), 401
+        # 權限檢查：admin 不能綁定到別店的既有帳號
+        if not current_user.is_super_admin():
+            if existing_user.store and existing_user.store != current_user.store:
+                return jsonify({"status": "error", "message": "無權限綁定到其他店別的帳號"}), 403
+        # 可選：更新人臉（如果這次有拍新的）
+        if face_image:
+            try:
+                import face_recognition
+                img_data = base64.b64decode(face_image.split(",")[-1])
+                img = face_recognition.load_image_file(io.BytesIO(img_data))
+                encodings = face_recognition.face_encodings(img)
+                if encodings:
+                    existing_user.set_face_encoding(encodings[0])
+            except BaseException:
+                pass
+        device.user_id = existing_user.id
+        device.is_approved = True
+        device.is_revoked = False
+        _log_user_action(
+            "approve_device", existing_user,
+            detail=f"rebind existing account, device={device.device_name}"
+        )
+        db.session.commit()
+        return jsonify({"status": "ok", "user_id": existing_user.id, "rebind": True})
+
+    # 帳號不存在 → 建立新帳號
     user = User(
         username=username,
         role=role if role in ("super_admin", "admin", "user") else "user",

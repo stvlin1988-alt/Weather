@@ -165,7 +165,8 @@ class TrustedDevice(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    fingerprint = db.Column(db.Text, unique=True, nullable=False)
+    fingerprint = db.Column(db.Text, nullable=False)  # 移除 unique（改為可多台共享）
+    client_uid = db.Column(db.Text, nullable=True)    # 唯一（partial index where not null）
     device_name = db.Column(db.Text, nullable=False, default="Unknown")
     is_approved = db.Column(db.Boolean, nullable=False, default=False)
     is_revoked = db.Column(db.Boolean, nullable=False, default=False)

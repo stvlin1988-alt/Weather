@@ -61,6 +61,26 @@
     return name;
   }
 
+  // 產生/讀取裝置專屬 UUID（存 localStorage，保證每台實體裝置唯一）
+  function getOrCreateUID() {
+    try {
+      var uid = localStorage.getItem('device_uid');
+      if (!uid) {
+        if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+          uid = window.crypto.randomUUID();
+        } else {
+          uid = 'u_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 12);
+        }
+        localStorage.setItem('device_uid', uid);
+      }
+      return uid;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  window.__deviceUID = getOrCreateUID();
+
   var raw = collectFeatures();
   sha256(raw).then(function(hash) {
     window.__deviceFP = hash;

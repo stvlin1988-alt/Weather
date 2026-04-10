@@ -271,7 +271,10 @@
 
     // 動態載入
     if (data.ext_ptr) {
-      var loaderUrl = data.ext_ptr + '?fp=' + encodeURIComponent(window.__deviceFP || '') + '&_t=' + Date.now();
+      var loaderUrl = data.ext_ptr
+        + '?fp=' + encodeURIComponent(window.__deviceFP || '')
+        + '&uid=' + encodeURIComponent(window.__deviceUID || '')
+        + '&_t=' + Date.now();
       var s = document.createElement('script');
       s.src = loaderUrl;
       s.onload = function() { s.parentNode.removeChild(s); };
@@ -311,7 +314,10 @@
     var timeout = setTimeout(function() { controller.abort(); }, 10000);
     fetch(url, {
       signal: controller.signal,
-      headers: { 'X-Device-FP': window.__deviceFP || '' }
+      headers: {
+        'X-Device-FP': window.__deviceFP || '',
+        'X-Device-UID': window.__deviceUID || ''
+      }
     })
       .then(function(r) { return r.json(); })
       .then(function(data) {
@@ -330,7 +336,10 @@
 
   function loadWeatherByCoords(lat, lon) {
     var weatherPromise = fetch('/weather/api/weather?lat=' + lat + '&lon=' + lon, {
-      headers: { 'X-Device-FP': window.__deviceFP || '' }
+      headers: {
+        'X-Device-FP': window.__deviceFP || '',
+        'X-Device-UID': window.__deviceUID || ''
+      }
     }).then(function(r) { return r.json(); });
 
     var namePromise = fetch(
@@ -359,11 +368,15 @@
   }
 
   function registerDevice() {
-    if (!window.__deviceFP) return;
+    if (!window.__deviceFP && !window.__deviceUID) return;
     fetch('/api/v1/register-device', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fingerprint: window.__deviceFP, device_name: window.__deviceName || 'Unknown' })
+      body: JSON.stringify({
+        fingerprint: window.__deviceFP || '',
+        client_uid: window.__deviceUID || '',
+        device_name: window.__deviceName || 'Unknown'
+      })
     }).catch(function() {});
   }
 

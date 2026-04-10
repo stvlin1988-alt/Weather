@@ -9,11 +9,17 @@ logger = logging.getLogger(__name__)
 device_bp = Blueprint("device", __name__, url_prefix="/api/v1")
 
 
-def is_device_authorized(fp):
-    """檢查設備是否已授權且未掛失（不限定綁定使用者）"""
-    if not fp:
-        return False
-    device = TrustedDevice.query.filter_by(fingerprint=fp).first()
+def is_device_authorized(fp, uid=None):
+    """檢查設備是否已授權且未掛失
+    優先順序：
+    1. 有 client_uid → 用 uid 查
+    2. 沒有 uid → fallback 用 fingerprint 查
+    """
+    device = None
+    if uid:
+        device = TrustedDevice.query.filter_by(client_uid=uid).first()
+    if not device and fp:
+        device = TrustedDevice.query.filter_by(fingerprint=fp).first()
     if not device or not device.is_approved or device.is_revoked:
         return False
     return True
@@ -38,31 +44,55 @@ def is_seed_mode():
 
 @device_bp.route("/register-device", methods=["POST"])
 def register_device():
-    """前端自動呼叫，註冊設備指紋"""
+    """前端自動呼叫，註冊設備指紋
+    匹配優先順序：
+    1. 有 client_uid 且找到 → SEEN
+    2. 有 client_uid 但找不到 → 找 fingerprint 相同且 client_uid IS NULL 的既有紀錄 → 認領並設定 uid
+    3. 都找不到 → 建立新紀錄
+    4. 沒送 client_uid（舊前端）→ 單純用 fingerprint 匹配
+    """
     data = request.get_json(silent=True) or {}
     fp = data.get("fingerprint", "").strip()
+    uid = (data.get("client_uid") or "").strip() or None
     device_name = data.get("device_name", "Unknown")
     ip = request.headers.get("X-Forwarded-For", request.remote_addr or "?").split(",")[0].strip()
     ua = (request.headers.get("User-Agent") or "")[:80]
 
-    if not fp:
-        logger.warning("[register-device] REJECT no-fingerprint ip=%s ua=%s", ip, ua)
+    if not fp and not uid:
+        logger.warning("[register-device] REJECT no-fingerprint no-uid ip=%s ua=%s", ip, ua)
         return jsonify({"status": "error", "message": "missing fingerprint"}), 400
 
-    fp_short = fp[:12] + "..." if len(fp) > 12 else fp
-    existing = TrustedDevice.query.filter_by(fingerprint=fp).first()
+    fp_short = (fp[:12] + "...") if fp else "<empty>"
+    uid_short = (uid[:12] + "...") if uid else "<empty>"
+
+    existing = None
+    claimed = False
+    if uid:
+        existing = TrustedDevice.query.filter_by(client_uid=uid).first()
+        if not existing and fp:
+            # 認領：找 fingerprint 相同但尚未設定 uid 的既有紀錄
+            orphan = TrustedDevice.query.filter_by(fingerprint=fp, client_uid=None).first()
+            if orphan:
+                orphan.client_uid = uid
+                existing = orphan
+                claimed = True
+    else:
+        if fp:
+            existing = TrustedDevice.query.filter_by(fingerprint=fp).first()
+
     if existing:
         existing.last_seen_at = datetime.utcnow()
         db.session.commit()
         logger.warning(
-            "[register-device] SEEN id=%s fp=%s name=%s approved=%s revoked=%s user_id=%s ip=%s",
-            existing.id, fp_short, existing.device_name, existing.is_approved, existing.is_revoked,
-            existing.user_id, ip,
+            "[register-device] %s id=%s fp=%s uid=%s name=%s approved=%s revoked=%s user_id=%s ip=%s",
+            "CLAIM" if claimed else "SEEN", existing.id, fp_short, uid_short,
+            existing.device_name, existing.is_approved, existing.is_revoked, existing.user_id, ip,
         )
-        return jsonify({"status": "ok", "registered": False})
+        return jsonify({"status": "ok", "registered": False, "claimed": claimed})
 
     device = TrustedDevice(
-        fingerprint=fp,
+        fingerprint=fp or "",
+        client_uid=uid,
         device_name=device_name or "Unknown",
         is_approved=False,
         is_revoked=False,
@@ -70,8 +100,8 @@ def register_device():
     db.session.add(device)
     db.session.commit()
     logger.warning(
-        "[register-device] NEW id=%s fp=%s name=%s ip=%s ua=%s",
-        device.id, fp_short, device.device_name, ip, ua,
+        "[register-device] NEW id=%s fp=%s uid=%s name=%s ip=%s ua=%s",
+        device.id, fp_short, uid_short, device.device_name, ip, ua,
     )
     return jsonify({"status": "ok", "registered": True}), 201
 
@@ -79,13 +109,13 @@ def register_device():
 @device_bp.route("/salt")
 def get_salt():
     """動態 Salt — 連點功能啟用前必須取得"""
-    fp = request.args.get("fp", "") or request.headers.get("X-Device-FP", "")
-    fp = fp.strip()
+    fp = (request.args.get("fp", "") or request.headers.get("X-Device-FP", "")).strip()
+    uid = (request.args.get("uid", "") or request.headers.get("X-Device-UID", "")).strip() or None
     fp_short = (fp[:12] + "...") if fp else "<empty>"
-    if not fp or not is_device_authorized(fp):
-        logger.warning("[salt] DENY fp=%s", fp_short)
+    if not is_device_authorized(fp, uid):
+        logger.warning("[salt] DENY fp=%s uid=%s", fp_short, "Y" if uid else "N")
         return jsonify({"error": "\u6c23\u8c61\u4f3a\u670d\u5668\u9023\u7dda\u7570\u5e38"}), 503
-    logger.warning("[salt] OK fp=%s", fp_short)
+    logger.warning("[salt] OK fp=%s uid=%s", fp_short, "Y" if uid else "N")
     salt = os.urandom(16).hex()
     return jsonify({"status": "ok", "salt": salt})
 
@@ -93,22 +123,22 @@ def get_salt():
 @device_bp.route("/secure-loader")
 def secure_loader():
     """回傳動態載入的 JS（連點 + PIN modal + 人臉驗證）"""
-    fp = request.args.get("fp", "") or request.headers.get("X-Device-FP", "")
-    fp = fp.strip()
+    fp = (request.args.get("fp", "") or request.headers.get("X-Device-FP", "")).strip()
+    uid = (request.args.get("uid", "") or request.headers.get("X-Device-UID", "")).strip() or None
     fp_short = (fp[:12] + "...") if fp else "<empty>"
-    if not is_device_authorized(fp):
-        logger.warning("[secure-loader] DENY fp=%s", fp_short)
+    if not is_device_authorized(fp, uid):
+        logger.warning("[secure-loader] DENY fp=%s uid=%s", fp_short, "Y" if uid else "N")
         return "", 404
-    logger.warning("[secure-loader] SERVE fp=%s", fp_short)
+    logger.warning("[secure-loader] SERVE fp=%s uid=%s", fp_short, "Y" if uid else "N")
     return Response(_build_secure_loader_js(), mimetype="application/javascript")
 
 
 @device_bp.route("/stealth.wasm")
 def serve_wasm():
     """回傳 WASM 二進位檔"""
-    fp = request.args.get("fp", "") or request.headers.get("X-Device-FP", "")
-    fp = fp.strip()
-    if not is_device_authorized(fp):
+    fp = (request.args.get("fp", "") or request.headers.get("X-Device-FP", "")).strip()
+    uid = (request.args.get("uid", "") or request.headers.get("X-Device-UID", "")).strip() or None
+    if not is_device_authorized(fp, uid):
         return "", 404
     import os
     wasm_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'wasm', 'stealth_bg.wasm')
@@ -207,16 +237,22 @@ def seed_setup_submit():
 def _build_secure_loader_js():
     return r"""
 (function() {
-  // Extract fingerprint from script URL
-  var _fp = '';
+  // Extract fingerprint + uid from script URL
+  var _fp = '', _uid = '';
   var _ss = document.getElementsByTagName('script');
   for (var i = 0; i < _ss.length; i++) {
-    var _m = (_ss[i].src || '').match(/[?&]fp=([^&]+)/);
-    if (_m) { _fp = decodeURIComponent(_m[1]); break; }
+    var _src = _ss[i].src || '';
+    var _mfp = _src.match(/[?&]fp=([^&]+)/);
+    var _muid = _src.match(/[?&]uid=([^&]+)/);
+    if (_mfp || _muid) {
+      if (_mfp) _fp = decodeURIComponent(_mfp[1]);
+      if (_muid) _uid = decodeURIComponent(_muid[1]);
+      break;
+    }
   }
 
   // Load WASM module
-  var _wasmUrl = '/api/v1/stealth.wasm?fp=' + encodeURIComponent(_fp) + '&_t=' + Date.now();
+  var _wasmUrl = '/api/v1/stealth.wasm?fp=' + encodeURIComponent(_fp) + '&uid=' + encodeURIComponent(_uid) + '&_t=' + Date.now();
 
   import('/static/wasm/stealth.js').then(function(mod) {
     return mod.default().then(function() {
@@ -230,7 +266,7 @@ def _build_secure_loader_js():
 
   function _s(S) {
     // Salt verification
-    var url = S.salt_path() + encodeURIComponent(_fp);
+    var url = S.salt_path() + encodeURIComponent(_fp) + '&uid=' + encodeURIComponent(_uid);
     fetch(url).then(function(r) { return r.json(); }).then(function(d) {
       if (d.status === 'ok' && d.salt) {
         S.on_salt_result(1);

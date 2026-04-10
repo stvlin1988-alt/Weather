@@ -82,6 +82,34 @@ def create_app():
                     """))
                 except Exception:
                     pass
+                # trusted_devices: 加 client_uid 欄位，拿掉 fingerprint unique，加 client_uid 的 partial unique index
+                try:
+                    db.session.execute(db.text(
+                        "ALTER TABLE trusted_devices ADD COLUMN IF NOT EXISTS client_uid TEXT"
+                    ))
+                except Exception:
+                    pass
+                try:
+                    db.session.execute(db.text("""
+                        DO $$
+                        BEGIN
+                            IF EXISTS (
+                                SELECT 1 FROM pg_constraint
+                                WHERE conname = 'trusted_devices_fingerprint_key'
+                            ) THEN
+                                ALTER TABLE trusted_devices DROP CONSTRAINT trusted_devices_fingerprint_key;
+                            END IF;
+                        END $$;
+                    """))
+                except Exception:
+                    pass
+                try:
+                    db.session.execute(db.text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS ix_trusted_devices_client_uid "
+                        "ON trusted_devices(client_uid) WHERE client_uid IS NOT NULL"
+                    ))
+                except Exception:
+                    pass
                 try:
                     db.session.execute(db.text("""
                         DO $$
