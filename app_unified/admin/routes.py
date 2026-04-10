@@ -82,12 +82,18 @@ def require_admin():
 def dashboard():
     require_admin()
     user_page = request.args.get("user_page", 1, type=int)
+    user_store_filter = request.args.get("user_store", "").strip()
     per_page = 20
     if current_user.is_super_admin():
-        user_query = User.query.order_by(User.created_at.desc())
+        user_query = User.query
     else:
-        user_query = User.query.filter_by(store=current_user.store).order_by(User.created_at.desc())
-    user_pagination = user_query.paginate(page=user_page, per_page=per_page, error_out=False)
+        user_query = User.query.filter_by(store=current_user.store)
+    # 店別篩選（只對 super_admin 有效，admin 已限定本店）
+    if current_user.is_super_admin() and user_store_filter:
+        user_query = user_query.filter_by(store=user_store_filter)
+    user_pagination = user_query.order_by(User.created_at.desc()).paginate(
+        page=user_page, per_page=per_page, error_out=False
+    )
     if current_user.is_super_admin():
         notes = Note.query.order_by(Note.updated_at.desc()).limit(20).all()
     else:
@@ -95,6 +101,7 @@ def dashboard():
     stores = [s.name for s in Store.query.order_by(Store.name).all()]
     return render_template("admin/dashboard.html", users=user_pagination.items,
                            user_pagination=user_pagination,
+                           user_store_filter=user_store_filter,
                            notes=notes, stores=stores, status_choices=STATUS_CHOICES)
 
 

@@ -56,15 +56,17 @@ th { background: #f8f9fa; font-weight: 700; }
 
 <div class="card" style="margin-top:1rem;">
   <h3>使用者列表</h3>
+  {% if current_user.is_super_admin() %}
   <div style="margin-top:.75rem;margin-bottom:.5rem;">
     <label style="font-size:.9rem;margin-right:.5rem;">篩選店別：</label>
-    <select id="filter-user-store" onchange="filterUsersByStore(this.value)" style="font-size:.9rem;padding:.4rem .6rem;border-radius:6px;border:1px solid #ddd;min-height:36px;">
-      <option value="">全部</option>
+    <select id="filter-user-store" onchange="location.href='{{ url_for('admin.dashboard') }}?user_store=' + encodeURIComponent(this.value)" style="font-size:.9rem;padding:.4rem .6rem;border-radius:6px;border:1px solid #ddd;min-height:36px;">
+      <option value="" {% if not user_store_filter %}selected{% endif %}>全部</option>
       {% for s in stores %}
-      <option value="{{ s }}">{{ s }} 店</option>
+      <option value="{{ s }}" {% if user_store_filter == s %}selected{% endif %}>{{ s }} 店</option>
       {% endfor %}
     </select>
   </div>
+  {% endif %}
   <table>
     <thead><tr><th>ID</th><th>名稱</th><th>店別</th><th>角色</th><th>狀態</th><th>建立時間</th><th>操作</th></tr></thead>
     <tbody>
@@ -112,7 +114,7 @@ th { background: #f8f9fa; font-weight: 700; }
   {% if user_pagination and user_pagination.pages > 1 %}
   <div style="display:flex;justify-content:center;align-items:center;gap:.5rem;margin-top:1rem;flex-wrap:wrap;">
     {% if user_pagination.has_prev %}
-    <a href="{{ url_for('admin.dashboard', user_page=user_pagination.prev_num) }}"
+    <a href="{{ url_for('admin.dashboard', user_store=user_store_filter, user_page=user_pagination.prev_num) }}"
        style="padding:.4rem .8rem;border-radius:6px;background:#f0f0f0;color:#333;text-decoration:none;font-size:.9rem;">‹ 上一頁</a>
     {% endif %}
     {% for p in user_pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
@@ -120,7 +122,7 @@ th { background: #f8f9fa; font-weight: 700; }
         {% if p == user_pagination.page %}
         <span style="padding:.4rem .8rem;border-radius:6px;background:#2c3e50;color:#fff;font-size:.9rem;font-weight:600;">{{ p }}</span>
         {% else %}
-        <a href="{{ url_for('admin.dashboard', user_page=p) }}"
+        <a href="{{ url_for('admin.dashboard', user_store=user_store_filter, user_page=p) }}"
            style="padding:.4rem .8rem;border-radius:6px;background:#f0f0f0;color:#333;text-decoration:none;font-size:.9rem;">{{ p }}</a>
         {% endif %}
       {% else %}
@@ -128,7 +130,7 @@ th { background: #f8f9fa; font-weight: 700; }
       {% endif %}
     {% endfor %}
     {% if user_pagination.has_next %}
-    <a href="{{ url_for('admin.dashboard', user_page=user_pagination.next_num) }}"
+    <a href="{{ url_for('admin.dashboard', user_store=user_store_filter, user_page=user_pagination.next_num) }}"
        style="padding:.4rem .8rem;border-radius:6px;background:#f0f0f0;color:#333;text-decoration:none;font-size:.9rem;">下一頁 ›</a>
     {% endif %}
     <span style="font-size:.82rem;color:#999;margin-left:.5rem;">共 {{ user_pagination.total }} 位</span>
@@ -474,17 +476,6 @@ async function loadUserLogs() {
   _userLogsData = await res.json();
   document.getElementById('user-logs-table').style.display = 'table';
   renderUserLogsPage(1);
-}
-
-function filterUsersByStore(store) {
-  const rows = document.querySelectorAll('table tbody tr[data-store]');
-  rows.forEach(row => {
-    if (!store || row.dataset.store === store) {
-      row.style.display = '';
-    } else {
-      row.style.display = 'none';
-    }
-  });
 }
 
 async function deleteUser(id, username) {
