@@ -65,7 +65,8 @@ class Note(db.Model):
     __tablename__ = "notes"
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    author_name = db.Column(db.Text, nullable=True)  # 建立當下的作者帳號（刪除使用者後保留）
     title = db.Column(db.Text, nullable=False, default="")
     content = db.Column(db.Text, nullable=False, default="")
     ai_summary = db.Column(db.Text)
@@ -81,6 +82,15 @@ class Note(db.Model):
                            foreign_keys="NoteLog.note_id",
                            primaryjoin="Note.id == NoteLog.note_id")
 
+    @property
+    def display_author(self):
+        """顯示用：原帳號在 → 帳號名；已刪除 → 原帳號名 (帳號已刪除)"""
+        if self.author:
+            return self.author.username
+        if self.author_name:
+            return f"{self.author_name} (帳號已刪除)"
+        return ""
+
 
 class NoteLog(db.Model):
     __tablename__ = "note_logs"
@@ -94,6 +104,25 @@ class NoteLog(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     operator = db.relationship("User", foreign_keys=[user_id])
+
+
+class UserLog(db.Model):
+    __tablename__ = "user_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    # 操作者
+    operator_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    operator_name = db.Column(db.Text, nullable=False)  # 快照
+    # 目標
+    target_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    target_name = db.Column(db.Text, nullable=False)    # 快照
+    # 動作：'create' | 'delete' | 'activate' | 'deactivate' | 'set_role' | 'set_store' | 'approve_device'
+    action = db.Column(db.Text, nullable=False)
+    detail = db.Column(db.Text, nullable=True)          # 例：role=user→admin
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    operator = db.relationship("User", foreign_keys=[operator_id])
+    target = db.relationship("User", foreign_keys=[target_id])
 
 
 class NoteAttachment(db.Model):

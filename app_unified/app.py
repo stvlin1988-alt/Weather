@@ -55,7 +55,7 @@ def create_app():
             db.create_all()
             # 修復 PostgreSQL sequence（避免 duplicate key error）
             if 'postgresql' in app.config['SQLALCHEMY_DATABASE_URI']:
-                for table in ['notes', 'users', 'stores', 'note_logs', 'trusted_devices']:
+                for table in ['notes', 'users', 'stores', 'note_logs', 'trusted_devices', 'user_logs']:
                     try:
                         db.session.execute(db.text(
                             f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "
@@ -63,6 +63,41 @@ def create_app():
                         ))
                     except Exception:
                         pass
+                # notes.user_id 允許 NULL + FK ON DELETE SET NULL（刪除使用者保留筆記）
+                try:
+                    db.session.execute(db.text("ALTER TABLE notes ALTER COLUMN user_id DROP NOT NULL"))
+                except Exception:
+                    pass
+                # notes.author_name：建立當下的作者帳號快照
+                try:
+                    db.session.execute(db.text("ALTER TABLE notes ADD COLUMN IF NOT EXISTS author_name TEXT"))
+                except Exception:
+                    pass
+                # 回填現有筆記的 author_name（只處理尚未填的）
+                try:
+                    db.session.execute(db.text("""
+                        UPDATE notes SET author_name = users.username
+                        FROM users
+                        WHERE notes.user_id = users.id AND notes.author_name IS NULL
+                    """))
+                except Exception:
+                    pass
+                try:
+                    db.session.execute(db.text("""
+                        DO $$
+                        BEGIN
+                            IF EXISTS (
+                                SELECT 1 FROM information_schema.table_constraints
+                                WHERE table_name='notes' AND constraint_name='notes_user_id_fkey'
+                            ) THEN
+                                ALTER TABLE notes DROP CONSTRAINT notes_user_id_fkey;
+                                ALTER TABLE notes ADD CONSTRAINT notes_user_id_fkey
+                                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+                            END IF;
+                        END $$;
+                    """))
+                except Exception:
+                    pass
                 db.session.commit()
             print("=== db.create_all() OK ===", flush=True)
         except Exception as e:

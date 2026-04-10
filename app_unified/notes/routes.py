@@ -160,7 +160,7 @@ def list_notes():
         "id": n.id, "title": n.title, "content": n.content,
         "store": n.store, "status": n.status or "pending",
         "priority": n.priority or "medium",
-        "author": n.author.username if n.author else "",
+        "author": n.display_author,
         "created_at": n.created_at.isoformat() if n.created_at else "",
         "updated_at": n.updated_at.isoformat() if n.updated_at else "",
     } for n in notes])
@@ -182,6 +182,7 @@ def create_note():
     priority = data.get("priority") if data.get("priority") in PRIORITY_CHOICES else "medium"
     note = Note(
         user_id=current_user.id,
+        author_name=current_user.username,
         title=data.get("title", "未命名筆記"),
         content=data.get("content", ""),
         store=store,
@@ -362,7 +363,7 @@ def _build_all_content(store_name=None):
     notes = query.order_by(Note.updated_at.desc()).all()
     parts = []
     for n in notes:
-        source = f"【檔名：{n.store or '未分店'}店_{n.author.username if n.author else '?'}_{n.updated_at.strftime('%m%d') if n.updated_at else ''}_{n.id}】"
+        source = f"【檔名：{n.store or '未分店'}店_{n.author_name or (n.author.username if n.author else '?')}_{n.updated_at.strftime('%m%d') if n.updated_at else ''}_{n.id}】"
         parts.append(f"{source}\n{n.title}\n{n.content}")
     return "\n\n---\n\n".join(parts), len(notes)
 
@@ -396,7 +397,7 @@ def outline(note_id):
     note = Note.query.get_or_404(note_id)
 
     # 單筆大綱：只處理這一篇
-    source = f"【檔名：{note.store or '未分店'}店_{note.author.username if note.author else '?'}_{note.id}】"
+    source = f"【檔名：{note.store or '未分店'}店_{note.author_name or (note.author.username if note.author else '?')}_{note.id}】"
     prompt = (
         MANAGER_PROMPT
         + "\n# 額外要求\n請將此筆記整理成條列式大綱，保留所有細節。\n"
@@ -441,7 +442,7 @@ def notes_ai_summary():
     # 合併所有筆記成 all_content，每段標註檔名來源
     parts = []
     for n in notes:
-        source = f"【檔名：{n.store or '未分店'}店_{n.author.username if n.author else '?'}_{n.updated_at.strftime('%m%d') if n.updated_at else ''}_{n.id}】"
+        source = f"【檔名：{n.store or '未分店'}店_{n.author_name or (n.author.username if n.author else '?')}_{n.updated_at.strftime('%m%d') if n.updated_at else ''}_{n.id}】"
         parts.append(f"{source}\n{n.title}\n{n.content}")
     all_content = "\n\n---\n\n".join(parts)
 

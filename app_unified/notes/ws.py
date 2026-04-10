@@ -80,7 +80,7 @@ def register_ws_events(socketio):
             'id': n.id, 'title': n.title, 'content': n.content,
             'store': n.store, 'status': n.status or 'pending',
             'priority': n.priority or 'medium',
-            'author': n.author.username if n.author else '',
+            'author': n.display_author,
             'created_at': n.created_at.isoformat() if n.created_at else '',
             'updated_at': n.updated_at.isoformat() if n.updated_at else '',
         } for n in notes]})
@@ -98,6 +98,7 @@ def register_ws_events(socketio):
         priority = data.get('priority') if data.get('priority') in PRIORITY_CHOICES else 'medium'
         note = Note(
             user_id=current_user.id,
+            author_name=current_user.username,
             title=data.get('title', '未命名筆記'),
             content=data.get('content', ''),
             store=store, status=status, priority=priority,

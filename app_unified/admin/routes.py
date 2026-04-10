@@ -5,7 +5,20 @@ TW_TZ = timezone(timedelta(hours=8))
 from flask import Blueprint, render_template, jsonify, request, abort, current_app
 from flask_login import login_required, current_user
 from extensions import db
-from models import User, Note, Store, NoteLog, STATUS_CHOICES
+from models import User, Note, Store, NoteLog, UserLog, STATUS_CHOICES
+
+
+def _log_user_action(action, target_user, detail=None):
+    """記錄使用者管理動作"""
+    log = UserLog(
+        operator_id=current_user.id,
+        operator_name=current_user.username,
+        target_id=target_user.id if target_user else None,
+        target_name=target_user.username if target_user else "",
+        action=action,
+        detail=detail,
+    )
+    db.session.add(log)
 
 try:
     import face_recognition_models
@@ -143,6 +156,7 @@ def create_user():
         except Exception:
             pass
 
+    _log_user_action("create", user, detail=f"role={role}, store={user.store or '—'}")
     db.session.commit()
     return jsonify({"status": "ok", "user_id": user.id, "username": user.username})
 
@@ -155,6 +169,7 @@ def toggle_user(user_id):
     if user.id == current_user.id:
         return jsonify({"status": "error", "message": "不可停用自己"}), 400
     user.is_active = not user.is_active
+    _log_user_action("activate" if user.is_active else "deactivate", user)
     db.session.commit()
     return jsonify({"status": "ok", "is_active": user.is_active})
 
@@ -166,9 +181,11 @@ def delete_user(user_id):
     user = User.query.get_or_404(user_id)
     if user.id == current_user.id:
         return jsonify({"status": "error", "message": "不可刪除自己"}), 400
-    # Log 保留（note_id/user_id 已設 ON DELETE SET NULL，30 天後自動清理）
-    Note.query.filter_by(user_id=user.id).delete()
+    # 筆記保留：確保 author_name 快照已存（顯示為「帳號 (帳號已刪除)」）
+    Note.query.filter_by(user_id=user.id, author_name=None).update({"author_name": user.username})
+    Note.query.filter_by(user_id=user.id).update({"user_id": None})
     Note.query.filter_by(updated_by=user.id).update({"updated_by": None})
+    _log_user_action("delete", user, detail=f"role={user.role}, store={user.store or '—'}")
     db.session.delete(user)
     db.session.commit()
     return jsonify({"status": "ok"})
@@ -185,7 +202,10 @@ def set_role(user_id):
         return jsonify({"status": "error", "message": "角色無效"}), 400
     if role == "super_admin" and not current_user.is_super_admin():
         return jsonify({"status": "error", "message": "僅 super_admin 可指派此角色"}), 403
+    old_role = user.role
     user.role = role
+    if old_role != role:
+        _log_user_action("set_role", user, detail=f"{old_role}→{role}")
     db.session.commit()
     return jsonify({"status": "ok"})
 
@@ -198,7 +218,10 @@ def set_store(user_id):
     data = request.get_json(silent=True) or {}
     store = data.get("store", "")
     valid_stores = [s.name for s in Store.query.all()]
+    old_store = user.store
     user.store = store if store in valid_stores else None
+    if old_store != user.store:
+        _log_user_action("set_store", user, detail=f"{old_store or '—'}→{user.store or '—'}")
     db.session.commit()
     return jsonify({"status": "ok", "store": user.store})
 
@@ -228,7 +251,7 @@ def store_summary():
     lines = []
     for n in notes:
         store_tag = f"【來源：{n.store}店" if n.store else "【來源：未分店"
-        author = n.author.username if n.author else "?"
+        author = n.author_name or (n.author.username if n.author else "?")
         date_str = n.updated_at.strftime("%m/%d") if n.updated_at else ""
         lines.append(f"{store_tag} / {author} / {date_str}】\n{n.title}\n{n.content}")
 
@@ -252,6 +275,32 @@ def store_summary():
         return jsonify({"status": "error", "message": str(e)}), 503
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ── 使用者操作 Log ────────────────────────────────────────
+
+@admin_bp.route("/user-logs", methods=["GET"])
+@login_required
+def list_user_logs():
+    require_admin()
+    logs = UserLog.query.order_by(UserLog.created_at.desc()).limit(200).all()
+    action_labels = {
+        "create": "新增",
+        "delete": "刪除",
+        "activate": "啟用",
+        "deactivate": "停用",
+        "set_role": "改角色",
+        "set_store": "改店別",
+        "approve_device": "核准裝置",
+    }
+    return jsonify([{
+        "id": log.id,
+        "operator": log.operator_name,
+        "target": log.target_name,
+        "action": action_labels.get(log.action, log.action),
+        "detail": log.detail or "",
+        "created_at": (log.created_at.replace(tzinfo=timezone.utc).astimezone(TW_TZ).strftime("%Y/%m/%d %H:%M")) if log.created_at else "",
+    } for log in logs])
 
 
 # ── 設備管理 ──────────────────────────────────────────────
@@ -334,6 +383,7 @@ def approve_device(device_id):
     device.user_id = user.id
     device.is_approved = True
     device.is_revoked = False
+    _log_user_action("approve_device", user, detail=f"role={role}, store={user.store or '—'}, device={device.device_name}")
     db.session.commit()
 
     return jsonify({"status": "ok", "user_id": user.id})

@@ -187,7 +187,7 @@ th { background: #f8f9fa; font-weight: 700; }
     {% for note in notes %}
     <tr>
       <td>{{ note.id }}</td>
-      <td>{{ note.author.username }}</td>
+      <td>{{ note.display_author or '—' }}</td>
       <td>{{ note.store or '—' }}</td>
       <td><a href="/notes/{{ note.id }}">{{ note.title or '（未命名）' }}</a></td>
       <td><span class="status-badge status-{{ note.status or 'pending' }}">{{ slabels.get(note.status or 'pending', note.status) }}</span></td>
@@ -268,6 +268,15 @@ th { background: #f8f9fa; font-weight: 700; }
   <table id="logs-table" style="margin-top:.75rem;display:none;">
     <thead><tr><th>時間</th><th>操作員</th><th>動作</th><th>筆記</th><th>變更</th></tr></thead>
     <tbody id="logs-tbody"></tbody>
+  </table>
+</div>
+
+<div class="card" style="margin-top:1rem;">
+  <h3>使用者操作 Log</h3>
+  <button class="btn btn-secondary" onclick="loadUserLogs()" style="margin-top:.5rem;">載入記錄</button>
+  <table id="user-logs-table" style="margin-top:.75rem;display:none;">
+    <thead><tr><th>時間</th><th>操作員</th><th>動作</th><th>目標帳號</th><th>變更</th></tr></thead>
+    <tbody id="user-logs-tbody"></tbody>
   </table>
 </div>
 {% endblock %}
@@ -388,6 +397,22 @@ async function loadLogs() {
   `).join('');
 }
 
+async function loadUserLogs() {
+  const res = await fetch('/admin/user-logs');
+  const logs = await res.json();
+  const tbody = document.getElementById('user-logs-tbody');
+  document.getElementById('user-logs-table').style.display = 'table';
+  tbody.innerHTML = logs.map(l => `
+    <tr>
+      <td style="white-space:nowrap;font-size:.8rem;">${l.created_at}</td>
+      <td>${l.operator}</td>
+      <td>${l.action}</td>
+      <td>${l.target}</td>
+      <td style="font-size:.8rem;color:#666;">${l.detail || '—'}</td>
+    </tr>
+  `).join('');
+}
+
 function filterUsersByStore(store) {
   const rows = document.querySelectorAll('table tbody tr[data-store]');
   rows.forEach(row => {
@@ -400,7 +425,7 @@ function filterUsersByStore(store) {
 }
 
 async function deleteUser(id, username) {
-  if (!confirm(`確定要刪除員工「${username}」？\n此操作會同時刪除該員工的所有筆記，且無法復原！`)) return;
+  if (!confirm(`確定要刪除員工「${username}」？\n該員工的筆記會保留，作者會顯示為「${username}（帳號已刪除）」。`)) return;
   const res = await fetch(`/admin/users/${id}`, { method: 'DELETE' });
   const data = await res.json();
   if (data.status === 'ok') {
