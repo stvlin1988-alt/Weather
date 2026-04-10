@@ -94,15 +94,11 @@ def dashboard():
     user_pagination = user_query.order_by(User.created_at.desc()).paginate(
         page=user_page, per_page=per_page, error_out=False
     )
-    if current_user.is_super_admin():
-        notes = Note.query.order_by(Note.updated_at.desc()).limit(20).all()
-    else:
-        notes = Note.query.filter_by(store=current_user.store).order_by(Note.updated_at.desc()).limit(20).all()
     stores = [s.name for s in Store.query.order_by(Store.name).all()]
     return render_template("admin/dashboard.html", users=user_pagination.items,
                            user_pagination=user_pagination,
                            user_store_filter=user_store_filter,
-                           notes=notes, stores=stores, status_choices=STATUS_CHOICES)
+                           stores=stores, status_choices=STATUS_CHOICES)
 
 
 @admin_bp.route("/users/create", methods=["POST"])
@@ -317,7 +313,30 @@ def list_user_logs():
 def list_devices():
     require_admin()
     from models import TrustedDevice
-    devices = TrustedDevice.query.order_by(TrustedDevice.created_at.desc()).all()
+    store_filter = request.args.get("store", "").strip()
+    query = TrustedDevice.query
+
+    # admin（非 super_admin）：強制限制在本店帳號 + 未綁定裝置範圍
+    if not current_user.is_super_admin():
+        if store_filter == "__none__":
+            query = query.filter(TrustedDevice.user_id.is_(None))
+        elif store_filter:
+            # 只允許篩選本店
+            if store_filter != current_user.store:
+                return jsonify([])
+            query = query.join(User, TrustedDevice.user_id == User.id).filter(User.store == current_user.store)
+        else:
+            # 預設「全部」= 本店 + 未綁定
+            query = query.outerjoin(User, TrustedDevice.user_id == User.id).filter(
+                db.or_(TrustedDevice.user_id.is_(None), User.store == current_user.store)
+            )
+    else:
+        if store_filter == "__none__":
+            query = query.filter(TrustedDevice.user_id.is_(None))
+        elif store_filter:
+            query = query.join(User, TrustedDevice.user_id == User.id).filter(User.store == store_filter)
+
+    devices = query.order_by(TrustedDevice.created_at.desc()).all()
     return jsonify([{
         "id": d.id,
         "fingerprint": d.fingerprint[:12] + "...",

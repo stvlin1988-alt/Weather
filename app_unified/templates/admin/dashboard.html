@@ -182,26 +182,21 @@ th { background: #f8f9fa; font-weight: 700; }
   </div>
 </div>
 <div class="card" style="margin-top:1rem;">
-  <h3>最近筆記（前20篇）</h3>
-  <table>
-    {% set slabels = {'pending':'待處理','in_progress':'待討論','resolved':'已解決'} %}
-    <thead><tr><th>ID</th><th>使用者</th><th>店別</th><th>標題</th><th>狀態</th><th>更新時間</th></tr></thead>
-    <tbody>
-    {% for note in notes %}
-    <tr>
-      <td>{{ note.id }}</td>
-      <td>{{ note.display_author or '—' }}</td>
-      <td>{{ note.store or '—' }}</td>
-      <td><a href="/notes/{{ note.id }}">{{ note.title or '（未命名）' }}</a></td>
-      <td><span class="status-badge status-{{ note.status or 'pending' }}">{{ slabels.get(note.status or 'pending', note.status) }}</span></td>
-      <td>{{ note.updated_at | fmt_datetime }}</td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</div>
-<div class="card" style="margin-top:1rem;">
   <h3>設備管理</h3>
+  <div style="margin-top:.5rem;">
+    <label style="font-size:.9rem;margin-right:.5rem;">篩選店別：</label>
+    <select id="filter-device-store" onchange="loadDevices()" style="font-size:.9rem;padding:.4rem .6rem;border-radius:6px;border:1px solid #ddd;min-height:36px;">
+      <option value="">全部</option>
+      {% if current_user.is_super_admin() %}
+      {% for s in stores %}
+      <option value="{{ s }}">{{ s }} 店</option>
+      {% endfor %}
+      {% else %}
+      <option value="{{ current_user.store }}">{{ current_user.store }} 店（本店）</option>
+      {% endif %}
+      <option value="__none__">未綁定帳號</option>
+    </select>
+  </div>
   <div style="display:flex;gap:.5rem;margin-top:.5rem;flex-wrap:wrap;">
     <button class="btn btn-secondary" onclick="loadDevices()">載入設備列表</button>
     <button class="btn btn-danger" id="btn-batch-delete" style="display:none;font-size:.85rem;" onclick="batchDeleteDevices()">🗑 批次刪除</button>
@@ -494,7 +489,10 @@ var approveStream = null;
 var approveFaceImage = null;
 
 function loadDevices() {
-  fetch('/admin/devices').then(function(r) { return r.json(); }).then(function(devices) {
+  var storeEl = document.getElementById('filter-device-store');
+  var storeVal = storeEl ? storeEl.value : '';
+  var url = '/admin/devices' + (storeVal ? '?store=' + encodeURIComponent(storeVal) : '');
+  fetch(url).then(function(r) { return r.json(); }).then(function(devices) {
     document.getElementById('devices-table').style.display = 'table';
     var tbody = document.getElementById('devices-tbody');
     tbody.innerHTML = devices.map(function(d) {
