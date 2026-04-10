@@ -1,9 +1,11 @@
 import os
+import logging
 from datetime import datetime
 from flask import Blueprint, request, jsonify, Response
 from extensions import db
 from models import TrustedDevice, User, Store
 
+logger = logging.getLogger(__name__)
 device_bp = Blueprint("device", __name__, url_prefix="/api/v1")
 
 
@@ -40,13 +42,25 @@ def register_device():
     data = request.get_json(silent=True) or {}
     fp = data.get("fingerprint", "").strip()
     device_name = data.get("device_name", "Unknown")
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "?").split(",")[0].strip()
+    ua = (request.headers.get("User-Agent") or "")[:80]
+
     if not fp:
+        logger.warning("[register-device] REJECT no-fingerprint ip=%s ua=%s", ip, ua)
         return jsonify({"status": "error", "message": "missing fingerprint"}), 400
+
+    fp_short = fp[:12] + "..." if len(fp) > 12 else fp
     existing = TrustedDevice.query.filter_by(fingerprint=fp).first()
     if existing:
         existing.last_seen_at = datetime.utcnow()
         db.session.commit()
+        logger.warning(
+            "[register-device] SEEN id=%s fp=%s name=%s approved=%s revoked=%s user_id=%s ip=%s",
+            existing.id, fp_short, existing.device_name, existing.is_approved, existing.is_revoked,
+            existing.user_id, ip,
+        )
         return jsonify({"status": "ok", "registered": False})
+
     device = TrustedDevice(
         fingerprint=fp,
         device_name=device_name or "Unknown",
@@ -55,6 +69,10 @@ def register_device():
     )
     db.session.add(device)
     db.session.commit()
+    logger.warning(
+        "[register-device] NEW id=%s fp=%s name=%s ip=%s ua=%s",
+        device.id, fp_short, device.device_name, ip, ua,
+    )
     return jsonify({"status": "ok", "registered": True}), 201
 
 
